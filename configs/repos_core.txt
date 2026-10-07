@@ -1,0 +1,7 @@
+# 6 repo đã có dữ liệu push 90 ngày (data/validate) -> crawl thêm build của pull request
+apache/paimon
+apache/druid
+apache/pinot
+apache/kafka
+apache/iceberg
+apache/gravitino

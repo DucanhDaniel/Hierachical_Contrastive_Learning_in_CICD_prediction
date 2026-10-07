@@ -1,0 +1,13 @@
+# Repo Apache Java/JVM (Maven/Gradle) mở rộng, chọn từ data/processed/apache_candidates.csv (GHARuns)
+# theo số lần fail đầu trên nhánh chính. Luật đọc log hiện tại viết cho Maven/Gradle/Java nên dùng lại được.
+apache/ozone
+apache/iotdb
+apache/fluss
+apache/groovy
+apache/tomcat
+apache/camel-quarkus
+apache/polaris
+apache/tika
+apache/storm
+apache/ignite
+apache/pulsar
