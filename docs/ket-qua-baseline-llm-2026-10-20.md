@@ -6,7 +6,7 @@
 - **Code:**
   - [llm_baseline.py](../src/project3/pilot/llm_baseline.py): `prepare` và `score`.
   - [task.py](../scripts/kaggle/llm_baseline/task.py): task Kaggle `p3-llm-baseline`.
-- **Kết quả:** `data/llm_baseline/` (llm_preds.parquet, scores.csv).
+- **Kết quả:** `data/results/llm_baseline/` (llm_preds.parquet, scores.csv).
 
 ## Thiết lập
 
@@ -88,7 +88,7 @@ F1 theo lá của LLM (nguyên vẹn / đã che):
   - ranh giới dependency / network (Q1–Q3);
   - dấu hiệu cụ thể của từng lá infra, theo đúng thứ tự khớp của quy tắc;
   - flaky chỉ khi log ghi rõ.
-- **Kết quả:** `data/llm_baseline/llm_preds_v2.parquet`, `scores_v2.csv`. Bản 1 đổi tên thành `*_v1`.
+- **Kết quả:** `data/results/llm_baseline/llm_preds_v2.parquet`, `scores_v2.csv`. Bản 1 đổi tên thành `*_v1`.
 
 | Tập | Chỉ số | Bản 1 | Bản 2 |
 |---|---|---:|---:|

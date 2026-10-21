@@ -4,10 +4,10 @@ Bước 3 trong [huong-moi-phan-loai-sau-ci.md](huong-moi-phan-loai-sau-ci.md). 
 
 - **Mô hình nơ-ron:**
   - Code: [log_hcl.py](../src/project3/pilot/log_hcl.py); dữ liệu đóng gói bằng [log_pack.py](../src/project3/pipeline/log_pack.py).
-  - Chạy trên kernel `p3-log-hcl`; kết quả ở `data/kaggle_log_out/v2/`.
+  - Chạy trên kernel `p3-log-hcl`; kết quả ở `data/results/log_model/v2/`.
 - **TF-IDF so sánh công bằng:**
   - Code: [log_baselines_fair.py](../src/project3/pilot/log_baselines_fair.py).
-  - Kết quả: `data/processed/log_baselines/fair.json`.
+  - Kết quả: `data/results/log_baselines/fair.json`.
 - **Cách chia:**
   - 5 fold chéo repo; với fold k: test = k, val = k+1, train = 3 fold còn lại.
   - 1 seed, 2 epoch, che bằng chứng ở 50% mẫu train.
@@ -60,7 +60,7 @@ Bước 3 trong [huong-moi-phan-loai-sau-ci.md](huong-moi-phan-loai-sau-ci.md). 
 - Chạy thêm seed (≥3) để đo phương sai.
 - Thêm nhánh diff: log, diff, log + diff.
 
-## Mô hình lai: UniXcoder + xác suất TF-IDF (chạy 19/10, kết quả ở `data/kaggle_log_out/v3_tfidf/`)
+## Mô hình lai: UniXcoder + xác suất TF-IDF (chạy 19/10, kết quả ở `data/results/log_model/v3_tfidf/`)
 
 - **Nhánh thêm:** log xác suất lá của TF-IDF A (30.000 ký tự cuối) -> 64 số, ghép cùng r và ngữ cảnh trước MLP (`log_hcl --tfidf`).
 - **Đặc trưng theo kiểu stacking** ([tfidf_feats.py](../src/project3/pilot/tfidf_feats.py)):
@@ -95,7 +95,7 @@ Tầng 2 theo fold (nguyên vẹn / đã che), lai CE: 0,711/0,634 · 0,745/0,71
 4. **Lá hiếm vẫn gần 0** (license, doc, flaky). Fold 0, HCL lai, test đã che: license 0,08, doc 0,20.
 5. **Giới hạn:** chỉ 1 seed. Fold 4 thì lai CE (0,673) thua TF-IDF A (0,723) trên test nguyên vẹn.
 
-## Thử nghiệm lá hiếm: sampler theo lớp + mượn trọng số loại cha (20/10, `data/kaggle_log_out/v4_rare/`)
+## Thử nghiệm lá hiếm: sampler theo lớp + mượn trọng số loại cha (20/10, `data/results/log_model/v4_rare/`)
 
 - **Thiết lập:** `log_hcl --tfidf --sampler mpc --share-parent`.
   - Sampler `mpc`: batch = 6 lá × 2 run, lá chọn với xác suất ~ √(số mẫu); bỏ trọng số lớp trong CE.
@@ -139,7 +139,7 @@ flaky = 0 ở mọi mô hình.
    - Cách sửa: điều chỉnh logit theo tần suất (logit adjustment) lúc suy luận.
 4. **Cấu hình tốt nhất ở mức lá hiện là lai + mpc HCL** (0,595 / 0,527). Nhưng hơn lai CE chỉ +0,004 / +0,012, với 1 seed thì chưa đủ để kết luận.
 
-## Lặp lại với seed 1 (20/10, `data/kaggle_log_out/v6_seed1/`, cấu hình lai + sampler, preds có logp 3 tầng)
+## Lặp lại với seed 1 (20/10, `data/results/log_model/v6_seed1/`, cấu hình lai + sampler, preds có logp 3 tầng)
 
 ### Macro-F1 trung bình 5 fold
 
@@ -170,7 +170,7 @@ flaky = 0 ở mọi mô hình.
 - **HCL kém hơn hoặc ngang 0/6:** dependency (−0,01 → −0,06), quality (≈ −0,01).
 - **Sampler:** loại bỏ phần thua ở lá đông (testfailure, itestfailure) mà HCL gặp khi không có sampler.
 
-## Loss tương phản mới sửa "anh em bị kéo quá gần" (20/10, fold 1, seed 0, lai + sampler; `data/kaggle_log_out/v7_loss/`)
+## Loss tương phản mới sửa "anh em bị kéo quá gần" (20/10, fold 1, seed 0, lai + sampler; `data/results/log_model/v7_loss/`)
 
 - **Thiết lập:** `soft` = SupCon một loss, cặp dương mềm theo cây (cùng lá 1, anh em 0,4); `proxy` = nguyên mẫu phân cấp (lá = cha + độ lệch, cha trọng số 0,3).
 - Tham số chốt trước, không dò. CE, HCL lấy từ `v5_repr`, cùng fold và cùng seed.

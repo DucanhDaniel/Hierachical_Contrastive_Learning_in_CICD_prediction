@@ -6,7 +6,7 @@ E4  định tuyến theo độ tin cậy: AUROC phát hiện dự đoán sai (m�
     tín hiệu: (a) xác suất của mô hình (logp), (b) kNN trên z (độ tương đồng TB tới 10 láng giềng train, tỉ lệ láng giềng
     đồng ý với dự đoán). Ước tính độ đúng cả hệ thống nếu run bị chuyển sang LLM đạt LLM_ACC (đo ở llm_baseline).
 
-    python -m project3.pilot.route_eval data/kaggle_log_out/v5_repr
+    python -m project3.pilot.route_eval data/results/log_model/v5_repr
 """
 import json
 import sys

@@ -3,7 +3,7 @@
 Bước 2 trong [huong-moi-phan-loai-sau-ci.md](huong-moi-phan-loai-sau-ci.md).
 
 - **Code:** [log_baselines.py](../src/project3/pilot/log_baselines.py).
-- **Kết quả:** `data/processed/log_baselines/` (results.json, report.md, preds.parquet).
+- **Kết quả:** `data/results/log_baselines/` (results.json, report.md, preds.parquet).
 - **Dữ liệu:** `data/run_dataset` (rule version `2026-10-18-dependency-q1q3`), gồm 43.616 run fail có nhãn quy tắc và có log, 100 repo đợt 1.
 
 ## Cách đo

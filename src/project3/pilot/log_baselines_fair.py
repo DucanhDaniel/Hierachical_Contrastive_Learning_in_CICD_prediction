@@ -6,7 +6,7 @@ train che bằng chứng 50% (cùng seed cách chọn khác nhau, cùng tỉ l�
   B  train 3 fold, đầu vào = đúng 8 đoạn mô hình thấy, mỗi đoạn cắt như clip_chunk  -> ảnh hưởng của lượng log
   C  như B + chuỗi ngữ cảnh "workflow | job | step fail" như mô hình                 -> đúng thông tin mô hình có
 
-    python -m project3.pilot.log_baselines_fair   # -> data/processed/log_baselines/fair.json, fair.md
+    python -m project3.pilot.log_baselines_fair   # -> data/results/log_baselines/fair.json, fair.md
 """
 import json
 import random

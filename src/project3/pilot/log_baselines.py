@@ -7,7 +7,7 @@ So sánh trên run fail có nhãn quy tắc, chia chéo repo (5 fold theo repo_f
 Đo trên test nguyên vẹn và test đã che. Test đã che mô phỏng run mà quy tắc không bắt được (nhóm `?`):
 xoá mọi dòng chứa dòng bằng chứng của quy tắc, phần còn lại của log giữ nguyên.
 
-    python -m project3.pilot.log_baselines         # -> data/processed/log_baselines/{results.json,report.md,preds.parquet}
+    python -m project3.pilot.log_baselines         # -> data/results/log_baselines/{results.json,report.md,preds.parquet}
 """
 import argparse
 import json
@@ -30,7 +30,7 @@ from project3.pilot.fine_labels import PARENT, subtype
 from project3.pipeline.run_dataset import clean
 
 DS = Path("data/run_dataset")
-OUT = Path("data/processed/log_baselines")
+OUT = Path("data/results/log_baselines")
 MAX_RUN_CHARS = 30_000  # giữ phần cuối log của run (giới hạn độ dài, không lọc theo từ khoá)
 SEED = 20261018
 

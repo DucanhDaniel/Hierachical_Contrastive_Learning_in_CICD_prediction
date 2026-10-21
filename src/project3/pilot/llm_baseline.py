@@ -7,7 +7,7 @@ Hai tập chấm:
          so trực tiếp với dự đoán của TF-IDF A / mô hình lai trên đúng các run đó (mỗi run nằm ở fold test đúng 1 lần)
 Đầu vào cho LLM: ngữ cảnh CI + MAX_CHARS ký tự cuối của các đoạn log (như mô hình đọc), không lọc theo chữ ERROR.
 
-    python -m project3.pilot.llm_baseline prepare     # -> data/llm_baseline/sample.parquet + ds/sample.jsonl (dataset p3-llm-sample)
+    python -m project3.pilot.llm_baseline prepare     # -> data/results/llm_baseline/sample.parquet + ds/sample.jsonl (dataset p3-llm-sample)
     python -m project3.pilot.llm_baseline score DIR   # DIR = thư mục `kaggle b t download`
 """
 import argparse
@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
 
-OUT = Path("data/llm_baseline")
+OUT = Path("data/results/llm_baseline")
 PACK = Path("data/kaggle_log_ds")
 MAX_CHARS, PER_LEAF, SEED = 12_000, 25, 20261020
 LEAVES = ["testfailure", "itestfailure", "compile", "buildconfig", "dependency", "quality", "doc", "license",
@@ -84,7 +84,7 @@ def model_preds(run_ids) -> pd.DataFrame:
     runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
     classes = sorted(runs.leaf.unique())  # cùng thứ tự cột như tfidf_feats
     rows = []
-    b = pd.read_parquet("data/processed/log_baselines/preds.parquet")
+    b = pd.read_parquet("data/results/log_baselines/preds.parquet")
     b = b[(b.model == "rule") & b.split.str.startswith("repo_fold") & b.run_id.isin(run_ids)]
     rows += [("quy tắc", t, r, p) for t, r, p in zip(b.test, b.run_id, b.pred)]
     for k in range(5):
@@ -93,7 +93,7 @@ def model_preds(run_ids) -> pd.DataFrame:
         for t in ("full", "masked"):
             rows += [("TF-IDF A", t, r, classes[int(np.argmax(f[t][r]))]) for r in te]
         for name, d, v in (("lai CE", "v3_tfidf", "ce"), ("lai + sampler HCL", "v4_rare", "hcl")):
-            q = pd.read_parquet(f"data/kaggle_log_out/{d}/results_fold{k}.preds.parquet")
+            q = pd.read_parquet(f"data/results/log_model/{d}/results_fold{k}.preds.parquet")
             q = q[(q.variant == v) & q.run_id.isin(te)]
             rows += [(name, t, r, p) for t, r, p in zip(q.test, q.run_id, q.pred)]
     return pd.DataFrame(rows, columns=["model", "test", "run_id", "pred"]).drop_duplicates(["model", "test", "run_id"])
