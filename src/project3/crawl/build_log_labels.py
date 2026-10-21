@@ -23,18 +23,23 @@ import duckdb
 
 from .gold_labels import NON_BUILD_WF
 
-PRIORITY = ["compile", "dependency", "lint", "test", "flaky", "infra"]
-GROUP = {"compile": "build", "dependency": "build", "lint": "build", "test": "test", "flaky": "env", "infra": "env"}
+PRIORITY = ["buildconfig", "compile", "dependency", "lint", "test", "flaky", "infra"]
+GROUP = {"buildconfig": "build", "compile": "build", "dependency": "build", "lint": "build", "test": "test", "flaky": "env", "infra": "env"}
 CAUSE = {"build": "code", "test": "code", "env": "env"}
 
 
 def load_commits(root: Path, commits: dict) -> None:
-    gold = {int(r["run_id"]): r["gold"] for r in csv.DictReader(open(root / "gold_labels.csv", encoding="utf-8-sig"))}
+    with (root / "gold_labels.csv").open(encoding="utf-8-sig") as f:
+        labels = {int(r["run_id"]): r for r in csv.DictReader(f)}
+    gold = {rid: r["gold"] for rid, r in labels.items()}
+    excluded = {rid for rid, r in labels.items()
+                if r.get("non_build", "").lower() == "true" or r["gold"] == "non_build"}
     for d in sorted(p for p in root.iterdir() if p.is_dir() and (p / "runs.jsonl").exists()):
         repo = d.name.replace("__", "/")
         for line in (d / "runs.jsonl").read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
-            if r["conclusion"] not in ("success", "failure") or NON_BUILD_WF.search(r["name"] or ""):
+            if (r["id"] in excluded or r["conclusion"] not in ("success", "failure")
+                    or NON_BUILD_WF.search(r["name"] or "")):
                 continue
             pr = r["event"].startswith("pull_request")
             # chuỗi commit: nhánh chính (push) hoặc một PR = (repo nguồn, nhánh nguồn)

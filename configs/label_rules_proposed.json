@@ -1,0 +1,589 @@
+{
+ "source": "open coding theo cụm (label_ui opencode)",
+ "rules": [
+  {
+   "priority": 1,
+   "label": "non_build",
+   "regex": "\\#\\S+\\s+isn't\\s+ready\\s+for\\s+running\\s+the\\s+CI\\s+in\\s+apache\\S+\\s+See\\s+the\\s+job\\s+summary\\s+for\\s+instructions\\s+on\\s+how\\s+to\\s+proceed\\.",
+   "signature": "##[error]#<n> isn't ready for running the CI in apache<path> See the job summary for instructions on how to proceed.",
+   "note": "",
+   "matches_unlabeled": 198,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 2,
+   "label": "non_build",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.owasp:dependency\\-check\\-maven:\\S+\\.\\S+\\.\\S+:check\\s+\\(default\\-cli\\)\\s+on\\s+projec",
+   "signature": "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-processing:",
+   "note": "sửa theo rà soát của Codex (10/10/2026): quét lỗ hổng OWASP (CVE/CVSS): chính sách hiện hành coi security scan là không phải build",
+   "matches_unlabeled": 71,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 3,
+   "label": "non_build",
+   "regex": "No\\s+release\\s+type\\s+found\\s+in\\s+pull\\s+request\\s+title",
+   "signature": "##[error]No release type found in pull request title \"Bump google.golang.org<path> from <n>.<n>.<n> to <n>.<n>.<n> in <path>\". Add a prefix to indicate what kin",
+   "note": "sửa theo rà soát của Codex (10/10/2026): kiểm tra tiêu đề PR",
+   "matches_unlabeled": 78,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 4,
+   "label": "non_build",
+   "regex": "The\\s+action\\s+gradle\\S+\\s+is\\s+not\\s+allowed\\s+in\\s+ap",
+   "signature": "##[error]The action gradle<path> is not allowed in apache<path> because all actions must be from a repository owned by your enterprise, created by GitHub, or ma",
+   "note": "",
+   "matches_unlabeled": 7,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 5,
+   "label": "compile",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.codehaus\\.mojo:exec\\-maven\\-plugin:\\S+\\.\\S+\\.\\S+:exec\\s+\\(python\\-compile\\)\\s+on\\s+pr",
+   "signature": "[ERROR] Failed to execute goal org.codehaus.mojo:exec-maven-plugin:<n>.<n>.<n>:exec (python-compile) on project iotdb-ainode: Command execution failed.: Process",
+   "note": "",
+   "matches_unlabeled": 97,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 6,
+   "label": "compile",
+   "regex": "error:\\s+could\\s+not\\s+compile\\s+`fluss\\-rs`\\s+\\(lib\\)\\s+due\\s+to\\s+\\S+\\s+previous\\s+error",
+   "signature": "error: could not compile `fluss-rs` (lib) due to <n> previous error",
+   "note": "",
+   "matches_unlabeled": 28,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 7,
+   "label": "compile",
+   "regex": "googlejavaformat\\.java\\.FormatterException:\\s+\\S+:\\s+error:",
+   "signature": "> Task :catalogs-contrib:catalog-jdbc-clickhouse:spotlessJava FAILED",
+   "note": "sửa theo rà soát của Codex (10/10/2026): formatter báo lỗi cú pháp Java (illegal start of expression…): code không biên dịch được",
+   "matches_unlabeled": 67,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 8,
+   "label": "compile",
+   "regex": "Caused\\s+by:\\s+io\\.quarkus\\.deployment\\.pkg\\.steps\\.NativeImageBuildStep\\$ImageGenerationFailureException:\\s+Ima",
+   "signature": "Caused by: io.quarkus.deployment.pkg.steps.NativeImageBuildStep$ImageGenerationFailureException: Image generation failed",
+   "note": "",
+   "matches_unlabeled": 11,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 9,
+   "label": "compile",
+   "regex": "\\[ERROR\\]\\s+Client\\s+bundle\\s+compiled\\s+with\\s+errors\\s+therefore\\s+further\\s+build\\s+is\\s+impossible\\.",
+   "signature": "[ERROR] Client bundle compiled with errors therefore further build is impossible.",
+   "note": "",
+   "matches_unlabeled": 8,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 10,
+   "label": "compile",
+   "regex": "Script\\s+compilation\\s+errors:",
+   "signature": "Script compilation errors:",
+   "note": "",
+   "matches_unlabeled": 13,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 11,
+   "label": "compile",
+   "regex": "error:\\s+could\\s+not\\s+compile\\s+`fluss\\-rs`\\s+\\(lib\\s+test\\)\\s+due\\s+to\\s+\\S+\\s+previous\\s+errors",
+   "signature": "error: could not compile `fluss-rs` (lib test) due to <n> previous errors",
+   "note": "",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 12,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.codehaus\\.mojo:exec\\-maven\\-plugin:\\S+\\.\\S+\\.\\S+:exec\\s+\\(check\\-licenses\\)\\s+on\\s+pr",
+   "signature": "[ERROR] Failed to execute goal org.codehaus.mojo:exec-maven-plugin:<n>.<n>.<n>:exec (check-licenses) on project distribution: Command execution failed. Process ",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): check-licenses là kiểm tra license",
+   "matches_unlabeled": 93,
+   "conflicts_in_human_sample": [
+    30863884897
+   ]
+  },
+  {
+   "priority": 13,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.apache\\.maven\\.plugins:maven\\-checkstyle\\-plugin:\\S+\\.\\S+\\.\\S+:check\\s+\\(validat",
+   "signature": "File \"ParseException.java\" does not exist. Will create one.",
+   "note": "",
+   "matches_unlabeled": 56,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 14,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:mcp\\-server:formatCheckPython\\s+FAILED",
+   "signature": "> Task :mcp-server:formatCheckPython FAILED",
+   "note": "",
+   "matches_unlabeled": 32,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 15,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':clients:client\\-python:pylint':",
+   "signature": "Installing collected packages: striprtf, pytz, filetype, distlib, dirtyjson, crcmod, zipp, wrapt, urllib<n>, tzdata, typing-extensions, tqdm, tomlkit, tomli, te",
+   "note": "",
+   "matches_unlabeled": 23,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 16,
+   "label": "lint",
+   "regex": "Caused\\s+by:\\s+org\\.apache\\.rat\\.api\\.RatException:\\s+Apache\\s+Rat\\s+audit\\s+failure\\s+\\-\\s+\\S+\\s+unapproved\\s+license",
+   "signature": "##[error]Execution failed for task ':rat':",
+   "note": "",
+   "matches_unlabeled": 23,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 17,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':iceberg\\-spark:iceberg\\-spark\\-runtime\\-\\S+\\.\\S+_\\S+\\.\\S+:checkRuntimeDeps'\\.",
+   "signature": "> Task :iceberg-spark:iceberg-spark-runtime-<n>.<n>_<n>.<n>:checkRuntimeDeps FAILED",
+   "note": "",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 18,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:server:spotlessJava\\s+FAILED",
+   "signature": "> Task :server:spotlessJava FAILED",
+   "note": "",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 19,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':polaris\\-server:generateLicenseReport'\\s+\\(registered\\s+by\\s+plugin\\s+'com\\.github\\.",
+   "signature": "<n>: Task failed with an exception.",
+   "note": "",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 20,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':common:javadoc':",
+   "signature": "error: warnings found and -Werror specified",
+   "note": "",
+   "matches_unlabeled": 16,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 21,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':iceberg\\-flink:iceberg\\-flink\\-runtime\\-\\S+\\.\\S+:checkRuntimeDeps'\\.",
+   "signature": "> Task :iceberg-flink:iceberg-flink-runtime-<n>.<n>:checkRuntimeDeps FAILED",
+   "note": "",
+   "matches_unlabeled": 19,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 22,
+   "label": "lint",
+   "regex": "ERROR:\\s+Configuration\\s+reference\\s+is\\s+out\\s+of\\s+date\\.\\s+Please\\s+run\\s+'make\\s+config\\-doc\\-generate'\\s+and\\s+commit\\s+the",
+   "signature": "ERROR: Configuration reference is out of date. Please run 'make config-doc-generate' and commit the changes.",
+   "note": "",
+   "matches_unlabeled": 16,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 23,
+   "label": "lint",
+   "regex": "Checked\\-in\\s+protobuf\\s+code\\s+is\\s+out\\s+of\\s+date\\s+with\\s+fluss\\-rpc\\S+\\s+Run\\s+fluss\\-rust",
+   "signature": "##[error]Checked-in protobuf code is out of date with fluss-rpc<path> Run fluss-rust<path> and commit the result, or commit the files from this job's regenerate",
+   "note": "",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 24,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:iceberg\\-kafka\\-connect:iceberg\\-kafka\\-connect\\-runtime:checkRuntimeDeps\\s+FAILED",
+   "signature": "> Task :iceberg-kafka-connect:iceberg-kafka-connect-runtime:checkRuntimeDeps FAILED",
+   "note": "",
+   "matches_unlabeled": 15,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 25,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:iceberg:iceberg\\-rest\\-server:spotlessJava\\s+FAILED",
+   "signature": "> Task :iceberg:iceberg-rest-server:spotlessJava FAILED",
+   "note": "",
+   "matches_unlabeled": 19,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 26,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Used\\s+undeclared\\s+dependencies\\s+found:",
+   "signature": "[ERROR] Used undeclared dependencies found:",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): maven-dependency-plugin analyze: vi phạm khai báo dependency, thống nhất với c66",
+   "matches_unlabeled": 14,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 27,
+   "label": "lint",
+   "regex": "ERROR:\\s+\\S+\\s+dead\\s+links\\s+found\\s+in\\s+\\.github\\S+\\s+!",
+   "signature": "ERROR: <n> dead links found in .github<path> !",
+   "note": "",
+   "matches_unlabeled": 13,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 28,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Require\\s+upper\\s+bound\\s+dependencies\\s+error\\s+for\\s+org\\.codehaus\\.woodstox:stax\\S+\\-api:\\S+\\.\\S+\\.\\S+\\.\\s+Paths\\s+to\\s+d",
+   "signature": "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-enforcer-plugin:<n>.<n>.<n>:enforce (default-cli) on project druid-iceberg-extensions:",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): maven-enforcer upper bound: vi phạm quy tắc, thống nhất với c64",
+   "matches_unlabeled": 5,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 29,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:rat\\s+FAILED",
+   "signature": "> Task :rat FAILED",
+   "note": "",
+   "matches_unlabeled": 31,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 30,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+size\\s+mismatch\\s+ozone\\-manager\\-\\S+\\.\\S+\\.\\S+\\-SNAPSHOT\\.jar:\\s+investigate\\s+with\\s+diffoscope\\s+hadoop\\-ozone\\S+",
+   "signature": "[ERROR] [Reproducible Builds] to analyze the differences, see diffoscope instructions in hadoop-ozone<path>",
+   "note": "",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 31,
+   "label": "lint",
+   "regex": "Exception\\s+in\\s+thread\\s+\"main\"\\s+org\\.apache\\.rat\\.document\\.RatDocumentAnalysisException:\\s+Issues\\s+with\\s+UNAPPRO",
+   "signature": "ERROR: Unexpected count for UNAPPROVED, limit is [<n>,<n>]. Count: <n>",
+   "note": "",
+   "matches_unlabeled": 10,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 32,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:server\\-common:spotlessJava\\s+FAILED",
+   "signature": "> Task :server-common:spotlessJava FAILED",
+   "note": "",
+   "matches_unlabeled": 10,
+   "conflicts_in_human_sample": [
+    29739127369
+   ]
+  },
+  {
+   "priority": 33,
+   "label": "lint",
+   "regex": "Execution\\s+failed\\s+for\\s+task\\s+':codenarcGate'\\s+\\(registered\\s+by\\s+plugin\\s+'org\\.apache\\.groovy\\-base'\\)\\.",
+   "signature": "> Task :codenarcGate FAILED",
+   "note": "",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 34,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+de\\.thetaphi:forbiddenapis:\\S+\\.\\S+:check\\s+\\(check\\-secure\\-erase\\-file\\-apis\\)\\s+o",
+   "signature": "[ERROR] Failed to execute goal de.thetaphi:forbiddenapis:<n>.<n>:check (check-secure-erase-file-apis) on project external-api: Parsing signatures failed: Class ",
+   "note": "",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 35,
+   "label": "lint",
+   "regex": "##\\[group\\]:catalogs\\-contrib:catalog\\-jdbc\\-clickhouse:spotlessJava\\s+failure\\s+marker",
+   "signature": "at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:<n>)",
+   "note": "tự phủ bởi quy tắc của c56",
+   "matches_unlabeled": 13,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 36,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Require\\s+upper\\s+bound\\s+dependencies\\s+error\\s+for\\s+org\\.checkerframework:checker\\-qual:\\S+\\.\\S+\\.\\S+\\.\\s+Paths\\s+t",
+   "signature": "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-enforcer-plugin:<n>.<n>.<n>:enforce (default-cli) on project druid-processing:",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): maven-enforcer upper bound",
+   "matches_unlabeled": 4,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 37,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Non\\-test\\s+scoped\\s+test\\s+only\\s+dependencies\\s+found:",
+   "signature": "[ERROR] Non-test scoped test only dependencies found:",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): maven-dependency-plugin analyze",
+   "matches_unlabeled": 16,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 38,
+   "label": "lint",
+   "regex": ">\\s+Verification\\s+failed:\\s+SpotBugs\\s+ended\\s+with\\s+exit\\s+code\\s+\\S+\\.\\s+See\\s+the\\s+report\\s+at:\\s+file://\\S+/",
+   "signature": "<xsl:template match=\"file[error]\">",
+   "note": "",
+   "matches_unlabeled": 3,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 39,
+   "label": "lint",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.codehaus\\.gmaven:groovy\\-maven\\-plugin:\\S+\\.\\S+\\.\\S+:execute\\s+\\(compare\\-with\\-r",
+   "signature": "[ERROR] Failed to execute goal org.codehaus.gmaven:groovy-maven-plugin:<n>.<n>.<n>:execute (compare-with-reference-list) on project iotdb-parent: Execution comp",
+   "note": "",
+   "matches_unlabeled": 7,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 40,
+   "label": "lint",
+   "regex": ">\\s+Task\\s+:groovy\\-binary:groovydocAll\\s+FAILED",
+   "signature": "> Task :groovy-binary:groovydocAll FAILED",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): groovydoc fail là lỗi tài liệu (loại doc của Rausch)",
+   "matches_unlabeled": 6,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 41,
+   "label": "lint",
+   "regex": "\\+\\s+printf\\s+'\\\\n\\\\n\\*\\*\\*\\*FAILED\\*\\*\\*\\*\\\\nDiff\\s+code\\s+coverage\\s+check\\s+failed\\.\\s+To\\s+view\\s+coverage\\s+report,\\s+run\\s+'\\\\''mvn\\s+",
+   "signature": "ERROR: Insufficient line coverage of <n>% (<n><path>). Required <n>%.",
+   "note": "",
+   "matches_unlabeled": 15,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 42,
+   "label": "lint",
+   "regex": "\\S+:\\S+\\s+error\\s+Insert\\s+`··`\\s+prettier\\S+",
+   "signature": "ELIFECYCLE Command failed with exit code <n>.",
+   "note": "",
+   "matches_unlabeled": 1,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 43,
+   "label": "lint",
+   "regex": "PMD\\s+Failure:\\s+org\\.apache\\.hadoop\\.ozone\\.om\\.OMPerformanceMetrics:\\S+\\s+Rule:FieldDeclarationsShouldBeAtSta",
+   "signature": "PMD Failure: org.apache.hadoop.ozone.om.OMPerformanceMetrics:<n> Rule:FieldDeclarationsShouldBeAtStartOfClass Priority:<n> Fields should be declared at the top ",
+   "note": "",
+   "matches_unlabeled": 6,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 44,
+   "label": "lint",
+   "regex": "\\[checkstyle\\]\\s+\\[ERROR\\]\\s+\\S+:\\S+:\\s+Line\\s+matches\\s+th",
+   "signature": "[checkstyle] [ERROR] <path>:<n>: Line matches the illegal pattern '\\s+$'. [RegexpSingleline]",
+   "note": "sửa theo rà soát của Codex (10/10/2026): checkstyle RegexpSingleline là vi phạm style",
+   "matches_unlabeled": 6,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 45,
+   "label": "dependency",
+   "regex": "Missing\\s+'[^']+'\\s+dependency\\s+on\\s+the\\s+classpath",
+   "signature": "FAILURE: Build failed with an exception.",
+   "note": "sửa theo rà soát của Codex lần 3 (10/10/2026): siết vào nguyên nhân Missing '…' dependency on the classpath thay vì chỉ khớp processor threw an exception",
+   "matches_unlabeled": 20,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 46,
+   "label": "infra",
+   "regex": "\\[ERROR\\]\\s+Java\\s+heap\\s+space\\s+\\->\\s+\\[Help\\s+\\S+\\]",
+   "signature": "[ERROR] Java heap space -> [Help <n>]",
+   "note": "",
+   "matches_unlabeled": 209,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 47,
+   "label": "infra",
+   "regex": "The\\s+forked\\s+VM\\s+terminated\\s+without\\s+properly\\s+saying\\s+goodbye",
+   "signature": "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:<n>.<n>.<n>:test (default-test) on project ozone-integration-test:",
+   "note": "sửa theo rà soát của Codex (10/10/2026): surefire fail phần lớn không ghi nguyên nhân; chỉ gán khi JVM test bị sập (loại crash của Rausch)",
+   "matches_unlabeled": 46,
+   "conflicts_in_human_sample": [
+    32206320400
+   ]
+  },
+  {
+   "priority": 48,
+   "label": "infra",
+   "regex": "\\[ERROR\\]\\s+caused\\s+by\\s+NvdApiException:\\s+Invalid\\s+API\\s+Key,\\s+length\\s+of\\s+\\S+\\s+too\\s+short\\s+to\\s+provided\\s+a\\s+masked\\s+par",
+   "signature": "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid: Fatal exception(s) analyzing Druid: One or mor",
+   "note": "",
+   "matches_unlabeled": 19,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 49,
+   "label": "infra",
+   "regex": "Primary\\s+download\\s+failed,\\s+trying\\s+archive\\s+mirror:\\s+https:/\\S+",
+   "signature": "Primary download failed, trying archive mirror: https:/<path>",
+   "note": "",
+   "matches_unlabeled": 13,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 50,
+   "label": "infra",
+   "regex": "#\\S+\\s+\\S+\\.\\S+\\s+cause:\\s+failed\\s+to\\s+create\\s+directory\\s+`\\S+`:\\s+Permission\\s+denied\\s+\\(os\\s+error\\s+",
+   "signature": "#<n> <n>.<n> error: Failed to initialize cache at `<path>`",
+   "note": "",
+   "matches_unlabeled": 6,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 51,
+   "label": "infra",
+   "regex": "\\[ERROR\\]\\s+The\\s+version\\s+of\\s+Java\\s+\\(\\S+\\)\\s+used\\s+to\\s+run\\s+this\\s+analysis\\s+is\\s+deprecated,\\s+and\\s+SonarQube\\s+Cloud\\s+no\\s+lon",
+   "signature": "[ERROR] Failed to execute goal org.sonarsource.scanner.maven:sonar-maven-plugin:<n>.<n>.<n>.<n>:sonar (default-cli) on project iotdb-parent:",
+   "note": "",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": [
+    29823796577
+   ]
+  },
+  {
+   "priority": 52,
+   "label": "infra",
+   "regex": "\\+\\s+_log\\s+'ERROR:\\s+Max\\s+of\\s+\\S+\\s+tries\\s+exceeded'",
+   "signature": "+ _log 'ERROR: Max of <n> tries exceeded'",
+   "note": "",
+   "matches_unlabeled": 7,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 53,
+   "label": "infra",
+   "regex": "wget:\\s+Failed\\s+to\\s+fetch\\s+https:/\\S+",
+   "signature": "wget: Failed to fetch https:/<path>",
+   "note": "",
+   "matches_unlabeled": 6,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 54,
+   "label": "infra",
+   "regex": "Failed\\s+to\\s+install\\s+k\\S+s",
+   "signature": "Failed to install k<n>s",
+   "note": "",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 55,
+   "label": "infra",
+   "regex": "could\\s+not\\s+be\\s+resolved:.*Could\\s+not\\s+transfer\\s+artifact.*(?i:connect\\s+timed\\s+out|read\\s+timed\\s+out|connection\\s+(?:reset|refused)|unknown\\s*host|no\\s+route\\s+to\\s+host)",
+   "signature": "[ERROR] Failed to execute goal on project paimon-lumina: Could not collect dependencies for project org.apache.paimon:paimon-lumina:jar:<n>.<n>-SNAPSHOT",
+   "note": "sửa theo rà soát của Codex lần 3 (10/10/2026): resolve thất bại kèm lỗi mạng (connect timed out…) là infra, không phải thiếu artifact",
+   "matches_unlabeled": 11,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 56,
+   "label": "infra",
+   "regex": "\\[ERROR\\]\\s+Caused\\s+by:\\s+org\\.apache\\.maven\\.surefire\\.booter\\.SurefireBooterForkException:\\s+The\\s+forked\\s+VM\\s+termi",
+   "signature": "[ERROR] at org.apache.maven.plugin.surefire.AbstractSurefireMojo.executeAfterPreconditionsChecked(AbstractSurefireMojo.java:<n>)",
+   "note": "",
+   "matches_unlabeled": 8,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 57,
+   "label": "infra",
+   "regex": "\\[get\\]\\s+Error\\s+opening\\s+connection\\s+java\\.io\\.IOException:\\s+Server\\s+returned\\s+HTTP\\s+response\\s+code:\\s+\\S+\\s+for\\s+URL:",
+   "signature": "[get] Error opening connection java.io.IOException: Server returned HTTP response code: <n> for URL: https:/<path>",
+   "note": "",
+   "matches_unlabeled": 5,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 58,
+   "label": "test",
+   "regex": "Some\\s+tests\\s+completed\\s+with\\s+an?\\s+(Failure|Error)",
+   "signature": "[junit] <n>-Sep-<n> <n>:<n>:<n>.<n> INFO [main] org.apache.catalina.startup.LoggingBaseTest.setUp Starting test case [testAddEndpointDeploymentFailed<n>]",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): dòng INFO cũ không phải lỗi; lỗi thật là BUILD FAILED của junit (Ant)",
+   "matches_unlabeled": 34,
+   "conflicts_in_human_sample": [
+    32040382603
+   ]
+  },
+  {
+   "priority": 59,
+   "label": "test",
+   "regex": "\\[ERROR\\]\\s+Failed\\s+to\\s+execute\\s+goal\\s+org\\.jacoco:jacoco\\-maven\\-plugin:\\S+\\.\\S+\\.\\S+:check\\s+\\(jacoco\\-check\\)\\s+on\\s+project",
+   "signature": "[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:<n>.<n>.<n>:check (jacoco-check) on project fluss-test-coverage: Coverage checks have not been met",
+   "note": "",
+   "matches_unlabeled": 25,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 60,
+   "label": "test",
+   "regex": "error:\\s+test\\s+failed,\\s+to\\s+rerun\\s+pass\\s+`\\-p\\s+fluss\\-rs\\s+\\-\\-test\\s+test_fluss`",
+   "signature": "test result: FAILED. <n> passed; <n> failed; <n> ignored; <n> measured; <n> filtered out; finished in <n>.<n>s",
+   "note": "",
+   "matches_unlabeled": 10,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 61,
+   "label": "test",
+   "regex": "❌\\s+Test\\s+failed\\s+for\\s+content\\S+\\s+\\(\\S+m\\s+\\S+s\\)",
+   "signature": "❌ Test failed for content<path> (<n>m <n>s)",
+   "note": "",
+   "matches_unlabeled": 23,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 62,
+   "label": "test",
+   "regex": "❌\\s+Test\\s+failed\\s+for\\s+content\\S+\\s+\\(\\S+\\.\\S+s\\)",
+   "signature": "❌ Test failed for content<path> (<n>.<n>s)",
+   "note": "",
+   "matches_unlabeled": 16,
+   "conflicts_in_human_sample": []
+  },
+  {
+   "priority": 63,
+   "label": "test",
+   "regex": ">\\s+Task\\s+:performance:performanceTestGroovy\\S+_\\S+_\\S+\\s+FAILED",
+   "signature": "> Task :performance:performanceTestGroovy<n>_<n>_<n> FAILED",
+   "note": "sửa theo rà soát (Claude, người dùng đồng ý 10/10/2026): performanceTest fail là test",
+   "matches_unlabeled": 9,
+   "conflicts_in_human_sample": []
+  }
+ ],
+ "non_build_signatures": [
+  "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-server:",
+  "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project web-console:",
+  "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-hdfs-storage:",
+  "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-testcontainers:",
+  "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-parquet-extensions:"
+ ]
+}

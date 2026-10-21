@@ -11,12 +11,15 @@ import argparse
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import errno
+import gzip
 import json
 import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import requests
 
 from .github import GitHub, load_token
 
@@ -38,6 +41,9 @@ EARLY_STAGE = re.compile(r"compil|build|lint|checkstyle|spotless|format|\brat\b|
 LOG_WORKERS = 8
 LOG_TAIL_LINES = 150
 LOG_BEFORE_ERROR = 80
+# 18/10/2026 (người dùng duyệt, từ crawl đợt 2): ngoài đoạn error_context (.txt, dùng cho quy tắc gán nhãn) lưu thêm
+# phần đuôi log dài <job>.tail.txt.gz: nguyên nhân lỗi nhiều khi nằm xa dòng ##[error] / không có chữ ERROR.
+FULL_TAIL_BYTES = 200_000
 API_CAP = 1000  # API list run trả tối đa 1000 kết quả cho một bộ lọc -> phải chia nhỏ khoảng thời gian
 
 
@@ -201,7 +207,14 @@ def crawl_repo(gh: GitHub, repo: str, days: int, max_pages: int, logs: bool, max
     todo = [r for r in failed if r["id"] not in done]
     log(f"  run fail: {len(failed)}, cần lấy job: {len(todo)}")
     for i, r in enumerate(todo, 1):
-        data = gh.get(f"/repos/{repo}/actions/runs/{r['id']}/jobs", per_page=100, filter="latest")
+        try:
+            data = gh.get(f"/repos/{repo}/actions/runs/{r['id']}/jobs", per_page=100, filter="latest")
+        except requests.HTTPError as e:
+            if e.response is None or e.response.status_code != 404:
+                raise
+            # run có trong danh sách nhưng đã bị xoá: ghi jobs rỗng để không chặn cả repo ở mọi lần chạy lại
+            log(f"  run {r['id']}: 404 khi lấy job, bỏ qua")
+            data = {"jobs": []}
         jobs = [{"id": j["id"], "name": j["name"], "conclusion": j["conclusion"],
                  "steps": [{"name": s["name"], "conclusion": s["conclusion"], "number": s["number"]}
                            for s in j.get("steps") or []]} for j in data["jobs"]]
@@ -225,6 +238,11 @@ def crawl_repo(gh: GitHub, repo: str, days: int, max_pages: int, logs: bool, max
         if text is None:
             (log_dir / f"{j['id']}.missing").touch()
         else:
+            # đuôi dài ghi trước .txt: .txt tồn tại = job đã xong (điều kiện bỏ qua khi chạy lại)
+            tail = log_dir / f"{j['id']}.tail.txt.gz"
+            tail_part = log_dir / f"{j['id']}.tail.part"
+            tail_part.write_bytes(gzip.compress(text.encode("utf-8")[-FULL_TAIL_BYTES:], compresslevel=6))
+            tail_part.replace(tail)
             target = log_dir / f"{j['id']}.txt"
             partial = target.with_suffix('.txt.part')
             partial.write_text(error_context(text), encoding="utf-8")
@@ -274,11 +292,20 @@ def main() -> None:
     gh = GitHub(token)
     for repo in repos:
         with crawl_lock(str(Path(a.root) / repo.replace('/', '__'))):
+            status = {'event': a.event, 'status': 'running', 'started_at': datetime.now(timezone.utc).isoformat()}
+            status_path = Path(a.root) / repo.replace('/', '__') / 'crawl_status.json'
             try:
                 crawl_repo(gh, repo, a.days, a.max_pages, not a.no_logs, a.max_logs, a.event, a.branches, a.root,
                            a.max_jobs_per_run, a.window_days)
+                status['status'] = 'completed'
             except Exception as e:  # một repo lỗi (đổi tên, tắt Actions...) không làm dừng cả lượt crawl
+                status['status'] = 'failed'
+                status['error_type'] = type(e).__name__
                 log(f"[{repo}] LỖI {type(e).__name__}: {e}")
+            status['updated_at'] = datetime.now(timezone.utc).isoformat()
+            partial = status_path.with_suffix('.json.part')
+            partial.write_text(json.dumps(status, ensure_ascii=False), encoding='utf-8')
+            partial.replace(status_path)
     log("Xong.")
 
 

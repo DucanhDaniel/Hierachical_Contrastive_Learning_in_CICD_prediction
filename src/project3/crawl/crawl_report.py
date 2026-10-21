@@ -88,7 +88,9 @@ def main(roots, parquet, out):
     state_path = Path('data/crawl_expand_state.json')
     state = json.loads(state_path.read_text(encoding='utf-8-sig')) if state_path.exists() else {}
     errors = []
-    for log in ('data/crawl_pr.log', 'data/crawl_extra.log', 'data/crawl_extra_push.log', 'data/crawl_extra_pr.log'):
+    logs = ['data/crawl_pr.log', 'data/crawl_extra.log', 'data/crawl_extra_push.log', 'data/crawl_extra_pr.log']
+    logs += [str(p) for p in Path('data').glob('overnight_retry_*.log')]
+    for log in logs:
         p = Path(log)
         if p.exists():
             raw = p.read_bytes()
@@ -109,6 +111,8 @@ def main(roots, parquet, out):
     now = datetime.now(timezone(timedelta(hours=7)))
     parallel_path = Path('data/crawl_extra_push_state.json')
     parallel = json.loads(parallel_path.read_text(encoding='utf-8-sig')) if parallel_path.exists() else {}
+    overnight_path = Path('data/crawl_overnight_state.json')
+    overnight = json.loads(overnight_path.read_text(encoding='utf-8-sig')) if overnight_path.exists() else {}
     elapsed = 'chưa có thời gian bắt đầu'
     if state.get('started'):
         end = datetime.fromisoformat(state['updated']) if state.get('status') == 'completed' else now
@@ -116,6 +120,7 @@ def main(roots, parquet, out):
     chunks = ['# Báo cáo crawl mở rộng dữ liệu',
               f'Cập nhật {now:%Y-%m-%d %H:%M:%S %z}. Pipeline: `{state.get("stage", "unknown")}` / `{state.get("status", "unknown")}`. Thời gian từ lúc khởi chạy: {elapsed}.',
               f'Worker mở rộng song song: `{parallel.get("stage", "chưa khởi chạy")}` / `{parallel.get("status", "chưa khởi chạy")}`; theo dõi `data/crawl_extra_push.log` hoặc `data/crawl_extra_pr.log`. Checkpoint/điều khiển: `docs/codex/crawl-control.md`.',
+              f'Giám sát qua đêm: `{overnight.get("stage", "chưa khởi chạy")}` / `{overnight.get("status", "chưa khởi chạy")}`; `data/crawl_overnight_state.json` là trạng thái riêng, không đồng nghĩa đạt tiêu chí nhãn.',
               f'Số liệu commit đọc trực tiếp từ `{parquet}` (mtime: {datetime.fromtimestamp(parquet.stat().st_mtime, now.tzinfo).isoformat()}). Khi crawl còn chạy, đây là ảnh chụp tạm thời; chưa phải bộ dữ liệu hoàn tất.',
               '## Repo × event', table(['repo', 'event', 'commit', 'fail', '% fail', 'fail đầu', 'từ (UTC)', 'đến (UTC)'], by_repo),
               '## Nhãn commit fail', table(['cause', 'label_group', 'label', 'commit fail', '%', 'fail đầu'], by_label),
@@ -154,6 +159,7 @@ def main(roots, parquet, out):
               '- Nếu tiến trình bị ngắt, xác nhận tiến trình cũ đã dừng rồi chạy `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/crawl_expand.ps1`; crawler bỏ qua run/jobs/log đã lưu. Chạy thêm `scripts/crawl_finish.ps1` để cập nhật báo cáo sau khi xong.',
               '- Dùng `scripts/crawl_control.ps1 -Action Status`, `-Action Pause` hoặc `-Action Resume` để quản lý các worker; checkpoint nằm tại `data/crawl_checkpoint.json`. Không tạm dừng lượt thật trong quá trình kiểm tra tính năng.',
               '- 14 kiểm tra unittest đạt, gồm khóa giữa hai tiến trình, JSONL bị cắt và repo không có run fail/workflow; sửa lỗi đọc jobs.jsonl chưa tồn tại của Pulsar. Kiểm tra CSV root rỗng đạt; lấy mẫu hai lần cùng seed cho manifest/fingerprint giống nhau; các script PowerShell đã kiểm tra cú pháp. Resume đã chạy thật; chưa chủ động Pause.']
+    chunks.append('Giám sát qua đêm bổ sung retry HTTP 500/502/503/504, chọn repo thiếu jobs/log, giữ backup marker missing khi thử lại một lần; 17 kiểm tra unittest đạt. Sau tối đa 3 lượt bổ sung sẽ cập nhật dataset/báo cáo, vẫn để kết quả kiểm chứng mẫu mới là pending cho đến khi đọc thủ công.')
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text('\n\n'.join(chunks) + '\n', encoding='utf-8')
     print(f'Đã lưu {out}: {failed} commit fail, code={code}, ?={unknown_pct:.2f}%')

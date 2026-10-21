@@ -55,9 +55,14 @@ class GitHub:
 
     def get(self, path: str, **params) -> dict:
         url = path if path.startswith("http") else API + path
-        for _ in range(5):
+        for attempt in range(5):
             r = self._request(url, params=params, timeout=60)
             if self._wait_if_needed(r):
+                continue
+            if r.status_code in (500, 502, 503, 504):
+                wait = 5 * (attempt + 1)
+                print(f'  GitHub HTTP {r.status_code}, thử lại sau {wait}s', flush=True)
+                time.sleep(wait)
                 continue
             r.raise_for_status()
             return r.json()

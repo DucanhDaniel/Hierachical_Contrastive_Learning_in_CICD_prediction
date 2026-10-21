@@ -48,3 +48,13 @@ uv run python -m project3.crawl.checkpoint --repair
 14 kiểm tra tự động đã đạt, gồm khóa giữa hai tiến trình, JSONL cuối bị cắt, UTF-8 bị cắt, lỗi ở giữa file và repo không có run fail/workflow. Cú pháp các script điều khiển/worker đã kiểm tra. Resume đã thực hiện trên lượt crawl thật ngày 2026-10-07; chưa chủ động Pause lượt thật.
 
 Không tạo Windows Task Scheduler theo lựa chọn của người dùng ngày 2026-10-07. Pipeline hiện tại chưa tải diff code.
+
+## Tải qua đêm (2026-10-08)
+
+`scripts/crawl_overnight.ps1` giám sát lượt đang chạy, giữ máy thức bằng yêu cầu Windows gắn với tiến trình (không đổi power plan và không giữ màn hình sáng). Khi các worker/watcher hiện tại kết thúc, script kiểm tra và thử lại phần thiếu tối đa 3 lượt, mỗi lúc tối đa 2 crawler. Nó ưu tiên repo thiếu jobs/log hoặc đã có trạng thái crawl failed; jobs/log hoàn tất được bỏ qua.
+
+Marker `.missing` được thử lại một lần ở lượt đầu, vì marker cũ không phân biệt hết hạn với tải lỗi mạng. Bản gốc được giữ dưới tên `.missing.retry.<timestamp>`. Các lượt sau không liên tục thử lại marker đã thất bại. GitHub GET metadata có backoff cho HTTP 500/502/503/504; cơ chế chờ quota và tải Azure không mang token được giữ nguyên.
+
+Theo dõi `data/crawl_overnight_state.json`, `data/crawl_overnight.log` và `data/overnight_retry_*.log`. Khi xong, script tạo lại nhãn, parquet, mẫu review và báo cáo. Trạng thái `completed` chỉ nói các lượt tải đã xử lý; vẫn cần đọc mẫu thủ công và đối chiếu toàn bộ tiêu chí dữ liệu. `needs_attention` nghĩa là còn khoảng trống tải dữ liệu sau các lượt thử lại.
+
+Pause/Resume qua `crawl_control.ps1` quản lý cả supervisor qua đêm. Khi supervisor dừng, yêu cầu giữ máy thức không còn hiệu lực. Không tạo lịch Windows Task Scheduler. 17 kiểm tra tự động đã đạt.

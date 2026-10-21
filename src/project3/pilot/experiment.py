@@ -13,13 +13,13 @@ Tầng 2: trong commit fail, phân loại compile/lint/test từ diff.
 """
 import argparse
 import bisect
+import gzip
 import json
 import re
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix, hstack
@@ -43,10 +43,19 @@ FILE_KINDS = {
 }
 
 
+def read_diff(path: str | Path) -> str:
+    """Đọc diff, dạng nén (.gz) hoặc thường."""
+    path = Path(path)
+    if path.suffix == ".gz":
+        with gzip.open(path, "rt", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
 def parse_diff(path: str) -> dict:
     files, added, removed, hunks = [], [], [], 0
     try:
-        text = Path(path).read_text(encoding="utf-8", errors="ignore")
+        text = read_diff(path)
     except OSError:
         return {}
     for line in text.splitlines():
@@ -73,6 +82,8 @@ def parse_diff(path: str) -> dict:
 
 
 def load(table: Path, diffs_csv: Path, repos: list[str]) -> pd.DataFrame:
+    import duckdb  # chỉ cần khi dựng dữ liệu; môi trường GPU từ xa chỉ dùng hằng số và hàm khác
+
     con = duckdb.connect()
     df = con.sql(f"SELECT * FROM '{table.as_posix()}' WHERE repository IN ({','.join(f'{chr(39)}{r}{chr(39)}' for r in repos)})").df()
     df = df.sort_values("first_run_at").reset_index(drop=True)

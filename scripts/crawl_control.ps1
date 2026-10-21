@@ -9,7 +9,8 @@ $env:UV_CACHE_DIR = Join-Path $workspace '.uv-cache'
 $workers = @(
     @{ pid = 'data/crawl_expand.pid'; script = 'crawl_expand.ps1'; state = 'data/crawl_expand_state.json' },
     @{ pid = 'data/crawl_extra_push.pid'; script = 'crawl_extra_push.ps1'; state = 'data/crawl_extra_push_state.json' },
-    @{ pid = 'data/crawl_finish.pid'; script = 'crawl_finish.ps1'; state = $null }
+    @{ pid = 'data/crawl_finish.pid'; script = 'crawl_finish.ps1'; state = $null },
+    @{ pid = 'data/crawl_overnight.pid'; script = 'crawl_overnight.ps1'; state = 'data/crawl_overnight_state.json' }
 )
 function Owned-Process($worker, $processes) {
     if (-not (Test-Path -LiteralPath $worker.pid)) { return $null }
@@ -88,6 +89,7 @@ if ($Action -eq 'Pause') {
         }
     }
     Start-Worker $workers[2]
+    if (Test-Path data/crawl_overnight_state.json) { Start-Worker $workers[3] }
 } else {
     foreach ($worker in $workers) {
         $proc = Owned-Process $worker $processes

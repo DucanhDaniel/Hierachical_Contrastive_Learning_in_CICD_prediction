@@ -1,0 +1,13 @@
+{
+  "id": "ducanhpham2k5/p3-crawl",
+  "title": "p3-crawl",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["ducanhpham2k5/p3-crawl-state", "ducanhpham2k5/p3-gh-token"],
+  "competition_sources": [],
+  "kernel_sources": []
+}

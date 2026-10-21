@@ -1,0 +1,1252 @@
+{
+  "rule_version": "2026-10-15-buildconfig-doc",
+  "status": "codex-proposed-awaiting-human-review",
+  "source": "docs/codex/task-ra-soat-quy-tac-dependency.md",
+  "rules": [
+    {
+      "id": "Q1-replace-34",
+      "priority": 100,
+      "label": "dependency",
+      "regex": "\\[ERROR\\]\\s{1,20}Used\\s{1,20}undeclared\\s{1,20}dependencies\\s{1,20}found:",
+      "signature": "Q1-replace-34",
+      "matches_unlabeled": 0,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "fallback_replace",
+      "replaces_priority": 34,
+      "hints": [
+        "Used"
+      ],
+      "matches_all_build_runs": 56,
+      "effective_changes": 53
+    },
+    {
+      "id": "Q1-replace-36",
+      "priority": 101,
+      "label": "dependency",
+      "regex": "\\[ERROR\\]\\s{1,20}Require\\s{1,10}upper\\s{1,10}bound\\s{1,10}dependencies\\s{1,10}error\\s{1,10}for\\s{1,10}\\S{1,200}",
+      "signature": "Q1-replace-36",
+      "matches_unlabeled": 160,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 31444347421,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32791467751,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32791683661,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32803679878,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32803680040,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 33025138869,
+          "source": "round4_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35080134940,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 35080134981,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "fallback_replace",
+      "replaces_priority": 36,
+      "hints": [
+        "Require"
+      ],
+      "matches_all_build_runs": 204,
+      "effective_changes": 172
+    },
+    {
+      "id": "Q1-replace-44",
+      "priority": 102,
+      "label": "dependency",
+      "regex": "\\[ERROR\\]\\s{1,20}Require\\s{1,10}upper\\s{1,10}bound\\s{1,10}dependencies\\s{1,10}error\\s{1,10}for\\s{1,10}\\S{1,200}",
+      "signature": "Q1-replace-44",
+      "matches_unlabeled": 160,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "fallback_replace",
+      "replaces_priority": 44,
+      "hints": [
+        "Require"
+      ],
+      "matches_all_build_runs": 204,
+      "effective_changes": 0
+    },
+    {
+      "id": "Q1-replace-45",
+      "priority": 103,
+      "label": "dependency",
+      "regex": "\\[ERROR\\]\\s{1,20}Non\\-test\\s{1,20}scoped\\s{1,20}test\\s{1,20}only\\s{1,20}dependencies\\s{1,20}found:",
+      "signature": "Q1-replace-45",
+      "matches_unlabeled": 0,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "fallback_replace",
+      "replaces_priority": 45,
+      "hints": [
+        "Non-test"
+      ],
+      "matches_all_build_runs": 41,
+      "effective_changes": 16
+    },
+    {
+      "id": "Q1-upper-bound",
+      "priority": 104,
+      "label": "dependency",
+      "regex": "Require upper bound dependencies error for \\S{1,200}|RequireUpperBoundDeps failed with message",
+      "signature": "Q1-upper-bound",
+      "matches_unlabeled": 160,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "hints": [
+        "Require"
+      ],
+      "matches_all_build_runs": 204,
+      "effective_changes": 0
+    },
+    {
+      "id": "Q1-convergence",
+      "priority": 105,
+      "label": "dependency",
+      "regex": "Dependency convergence error for \\S{1,200}|DependencyConvergence failed with message",
+      "signature": "Q1-convergence",
+      "matches_unlabeled": 83,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 31732747273,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 31732747416,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 31732927419,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 31732927465,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 33652678599,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 33652678695,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 34201895352,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 34201895373,
+          "source": "round4_decisions.json",
+          "label": "lint",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "hints": [
+        "convergence",
+        "DependencyConvergence"
+      ],
+      "matches_all_build_runs": 88,
+      "effective_changes": 59
+    },
+    {
+      "id": "Q1-banned",
+      "priority": 106,
+      "label": "dependency",
+      "regex": "BannedDependencies failed with message",
+      "signature": "Q1-banned",
+      "matches_unlabeled": 7,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "hints": [
+        "BannedDependencies"
+      ],
+      "matches_all_build_runs": 9,
+      "effective_changes": 5
+    },
+    {
+      "id": "Q3-jdk-bytecode",
+      "priority": 107,
+      "label": "dependency",
+      "regex": "(?:java\\.lang\\.)?UnsupportedClassVersionError:|Unsupported class file major version \\d{1,3}|class file has wrong version \\d{1,3}\\.\\d{1,3}|has been compiled by a more recent version of the Java Runtime",
+      "signature": "Q3-jdk-bytecode",
+      "matches_unlabeled": 14,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 33528620889,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 29976656382,
+          "source": "data\\human_labels\\labels.jsonl",
+          "label": "compile",
+          "introduced": true
+        },
+        {
+          "run_id": 35969079461,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32424391564,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "hints": [
+        "UnsupportedClassVersionError",
+        "Unsupported class file",
+        "class file has wrong version",
+        "more recent version"
+      ],
+      "matches_all_build_runs": 108,
+      "effective_changes": 106,
+      "codex_review": {
+        "phu_hop": 30,
+        "khong_phu_hop": 0,
+        "chua_ro": 0,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "Q3-jdk-target",
+      "priority": 108,
+      "label": "dependency",
+      "regex": "(?:error: |Fatal error compiling: )invalid target release: \\d{1,3}|(?:error: |Fatal error compiling: )release version \\d{1,3} not supported",
+      "signature": "Q3-jdk-target",
+      "matches_unlabeled": 1,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "hints": [
+        "invalid target release",
+        "release version"
+      ],
+      "matches_all_build_runs": 2,
+      "effective_changes": 1,
+      "codex_review": {
+        "phu_hop": 1,
+        "khong_phu_hop": 0,
+        "chua_ro": 0,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "Q3-linkage",
+      "priority": 109,
+      "label": "dependency",
+      "regex": "(?:Exception in thread \"[^\"\\n]{1,80}\" |Caused by: )java\\.lang\\.(?:NoSuchMethodError|NoSuchFieldError|AbstractMethodError|IncompatibleClassChangeError):",
+      "signature": "Q3-linkage",
+      "matches_unlabeled": 1,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "guard": "failure_context",
+      "hints": [
+        "NoSuchMethodError",
+        "NoSuchFieldError",
+        "AbstractMethodError",
+        "IncompatibleClassChangeError"
+      ],
+      "matches_all_build_runs": 33,
+      "effective_changes": 1,
+      "codex_review": {
+        "phu_hop": 1,
+        "khong_phu_hop": 0,
+        "chua_ro": 0,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "Q3-gradle-jvm",
+      "priority": 110,
+      "label": "dependency",
+      "regex": "Dependency requires at least JVM runtime version \\d{1,3}\\. This build uses a Java \\d{1,3} JVM|Dependency resolution is looking for a library compatible with JVM runtime version [^\\n]{1,180}|[Ii]ncompatible because this component declares a component,? compatible with Java \\d{1,3} and the consumer needed a component,? compatible with Java \\d{1,3}",
+      "signature": "Q3-gradle-jvm",
+      "matches_unlabeled": 13,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 35083936532,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 29586675913,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34943314570,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34950243504,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35230257503,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35316225528,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "guard": "no_network",
+      "hints": [
+        "JVM runtime version",
+        "incompatible because",
+        "Incompatible because"
+      ],
+      "matches_all_build_runs": 14,
+      "effective_changes": 13,
+      "codex_review": {
+        "phu_hop": 13,
+        "khong_phu_hop": 0,
+        "chua_ro": 0,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "Q3-gradle-conflict",
+      "priority": 111,
+      "label": "dependency",
+      "regex": "Conflict found for module '[^'\\n]{1,200}': between versions \\S{1,100} and \\S{1,100}",
+      "signature": "Q3-gradle-conflict",
+      "matches_unlabeled": 24,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 34529654288,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34529655069,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34536689492,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34536994982,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34537191302,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34528229720,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "guard": "no_network",
+      "hints": [
+        "Conflict found for module"
+      ],
+      "matches_all_build_runs": 24,
+      "effective_changes": 24,
+      "codex_review": {
+        "phu_hop": 24,
+        "khong_phu_hop": 0,
+        "chua_ro": 0,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "Q3-missing-class-pair",
+      "priority": 112,
+      "label": "dependency",
+      "regex": "Caused by: java\\.lang\\.NoClassDefFoundError: (?!Could not initialize class)([A-Za-z_$][\\w$]{0,100}(?:[/.][\\w$]{1,100}){1,20})",
+      "signature": "Q3-missing-class-pair",
+      "matches_unlabeled": 72,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels. Needs explicit human review: missing own-project class may be packaging rather than dependency conflict.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "q3_override",
+      "guard": "missing_class_failure",
+      "hints": [
+        "NoClassDefFoundError"
+      ],
+      "matches_all_build_runs": 107,
+      "effective_changes": 58,
+      "codex_review": {
+        "phu_hop": 29,
+        "khong_phu_hop": 0,
+        "chua_ro": 1,
+        "not_human_precision": true
+      }
+    },
+    {
+      "id": "DEP-pnpm-version",
+      "priority": 113,
+      "label": "dependency",
+      "regex": "(?:Error: |ERR! )?ERR_PNPM_NO_MATCHING_VERSION\\b",
+      "signature": "DEP-pnpm-version",
+      "matches_unlabeled": 77,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "guard": "no_network",
+      "hints": [
+        "ERR_PNPM_NO_MATCHING_VERSION"
+      ],
+      "matches_all_build_runs": 77,
+      "effective_changes": 77
+    },
+    {
+      "id": "DEP-lockfile-frozen",
+      "priority": 114,
+      "label": "dependency",
+      "regex": "ERR_PNPM_OUTDATED_LOCKFILE\\b|Cannot install with [^\\n]{0,40}frozen-lockfile[^\\n]{0,160}(?:not up to date|not up-to-date)|Your lockfile needs to be updated, but yarn was run with [^\\n]{0,100}frozen-lockfile",
+      "signature": "DEP-lockfile-frozen",
+      "matches_unlabeled": 31,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "guard": "no_network",
+      "hints": [
+        "ERR_PNPM_OUTDATED_LOCKFILE",
+        "frozen-lockfile"
+      ],
+      "matches_all_build_runs": 31,
+      "effective_changes": 31
+    },
+    {
+      "id": "DEP-npm-eresolve",
+      "priority": 115,
+      "label": "dependency",
+      "regex": "npm (?:ERR!|error) code ERESOLVE\\b",
+      "signature": "DEP-npm-eresolve",
+      "matches_unlabeled": 0,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "guard": "no_network",
+      "hints": [
+        "ERESOLVE"
+      ],
+      "matches_all_build_runs": 203,
+      "effective_changes": 0
+    },
+    {
+      "id": "DEP-plugin-missing",
+      "priority": 116,
+      "label": "dependency",
+      "regex": "Plugin \\[id: [^\\]\\n]{1,300}\\] was not found in any of the following sources:",
+      "signature": "DEP-plugin-missing",
+      "matches_unlabeled": 135,
+      "conflicts_in_human_sample": [],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "guard": "plugin_missing_context",
+      "hints": [
+        "was not found in any"
+      ],
+      "matches_all_build_runs": 148,
+      "effective_changes": 0
+    },
+    {
+      "id": "DEP-gradle-file-missing",
+      "priority": 117,
+      "label": "dependency",
+      "regex": "Could not find [^\\s()]{1,200}\\.(?:jar|pom) \\([\\w.:-]{1,300}\\)\\.",
+      "signature": "DEP-gradle-file-missing",
+      "matches_unlabeled": 27,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 37637095437,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36579915152,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35255585039,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 35255612255,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 35263905032,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 36732449595,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 34999998305,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35363255726,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35692265501,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35963719154,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "dependency",
+      "layer": "unknown_only",
+      "guard": "missing_artifact_context",
+      "hints": [
+        "Could not find"
+      ],
+      "matches_all_build_runs": 37,
+      "effective_changes": 27
+    },
+    {
+      "id": "NET-gradle-http",
+      "priority": 118,
+      "label": "infra",
+      "regex": "Could not (?:GET|HEAD) [^\\n]{1,400}",
+      "signature": "NET-gradle-http",
+      "matches_unlabeled": 238,
+      "conflicts_in_human_sample": [
+        {
+          "run_id": 37650854873,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 37053156366,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30747697485,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 33549636955,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35922776854,
+          "source": "round3_decisions.json",
+          "label": "lint",
+          "introduced": false
+        },
+        {
+          "run_id": 37057287031,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31557558593,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 31370588823,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36945629079,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 37938826775,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30817223996,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35216860132,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31008911474,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31458275298,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32807827041,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30525456271,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 29288788077,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 29618653445,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 30295809233,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 30583357584,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32297312870,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32297313479,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32299833352,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32338716648,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32426623572,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32510350092,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32748054037,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32881167793,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32924784627,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32991869659,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32996161962,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33563095126,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33564157739,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33565152586,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33705896932,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33706755319,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 34426140740,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35657809872,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35661052317,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35785980362,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35888769415,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35899193835,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36113413397,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36166238568,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36650314964,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36653563694,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 37843624762,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 29941808333,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 30514206921,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 30664396805,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 31446067959,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32416401673,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33027725632,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35177750853,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35801524654,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32372451804,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36873469389,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 33781985049,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 29583795616,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30505670090,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30811999717,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 31149406701,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31320622786,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31367449142,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31394717157,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31817638362,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32003164780,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32129627684,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32138560589,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32143294664,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32192349764,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32319496278,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32337815069,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 32487833409,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32706385258,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 35692372330,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 36505848257,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36541843691,
+          "source": "round3_decisions.json",
+          "label": "dependency",
+          "introduced": false
+        },
+        {
+          "run_id": 30574753375,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 30590234753,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 31057549876,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32046161342,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32057301079,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32420487188,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36394835382,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 37535359500,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32222357951,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32283692663,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 35740426389,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36810692652,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 37084192898,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 37344838528,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 37415962287,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32148103381,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 32292054332,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36012491827,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        },
+        {
+          "run_id": 36626576078,
+          "source": "round3_decisions.json",
+          "label": "non_build",
+          "introduced": false
+        }
+      ],
+      "note": "Review-only; counts populated after evaluation; not human-approved. Match counts are raw regex hits before guards; effective_changes measures final labels.",
+      "origin": "codex-proposed",
+      "leaf_proposed": "network",
+      "layer": "unknown_only",
+      "guard": "network_context",
+      "hints": [
+        "Could not GET",
+        "Could not HEAD"
+      ],
+      "matches_all_build_runs": 548,
+      "effective_changes": 198
+    }
+  ]
+}
