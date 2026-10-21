@@ -17,7 +17,7 @@ from pathlib import Path
 import duckdb
 
 from project3.crawl import build_log_labels, gold_labels
-from project3.pilot import fine_labels
+from project3.crawl import fine_labels
 from .label_ui import current_labels
 
 ROOTS = [Path("data/validate"), Path("data/crawl_pr")]

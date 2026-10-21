@@ -129,14 +129,14 @@ def main(repos, workdir, days, skip, clones, force, diff_workers):
             log("commits: bỏ qua (đã mới)")
     if want("fine"):
         if force or stale([fine], [commits]):
-            sh("project3.pilot.fine_labels", "--commits", commits, "--out", fine, logfile=steplog("fine"))
+            sh("project3.crawl.fine_labels", "--commits", commits, "--out", fine, logfile=steplog("fine"))
         else:
             log("fine: bỏ qua (đã mới)")
     if want("diffs"):
         index = processed / "diffs_all.csv"
         if force or stale([index], [commits]):
             run_out = processed / "diffs_run.csv"
-            sh("project3.pilot.fetch_diffs", "--table", commits, "--repos", *repos, "--clones", clones,
+            sh("project3.pipeline.fetch_diffs", "--table", commits, "--repos", *repos, "--clones", clones,
                "--diffs", "data/diffs", "--out", run_out, "--workers", diff_workers, "--cleanup",
                logfile=steplog("diffs"))
             merge_diffs(run_out, index)

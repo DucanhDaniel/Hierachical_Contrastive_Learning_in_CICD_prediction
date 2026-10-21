@@ -58,7 +58,7 @@ def run_logs(root: Path) -> dict:
 
 def rule_leaf(r: dict, jobs: list[dict]) -> str | None:
     """Lá tầng 3 mà quy tắc gán cho một run (cùng cách với fine_labels), `?` nếu tầng 2 chưa gán."""
-    from project3.pilot.fine_labels import subtype
+    from project3.crawl.fine_labels import subtype
     if r["gold"] == "?":
         return "?"
     return subtype(r["gold"], r.get("evidence", ""), r["workflow"], " ".join(j["name"] for j in jobs))
@@ -376,7 +376,7 @@ def disagreements(out: Path) -> list[dict]:
 
 def tier2(label: str) -> str:
     """Nhãn người ở tầng 2: lá tầng 3 quy về cha, nhãn tầng 2 (mẫu cũ) giữ nguyên."""
-    from project3.pilot.fine_labels import PARENT
+    from project3.crawl.fine_labels import PARENT
     return PARENT.get(label, label)
 
 

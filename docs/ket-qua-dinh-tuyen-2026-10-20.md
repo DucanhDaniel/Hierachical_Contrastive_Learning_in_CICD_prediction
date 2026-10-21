@@ -2,7 +2,7 @@
 
 - **Bối cảnh:** hướng kết hợp (docs/ket-qua-baseline-llm-2026-10-20.md). Mô hình cục bộ phân loại + chọn đoạn log; LLM chỉ xử lý run khó và chỉ ra vị trí lỗi.
 - **Mô hình:** lai + sampler (`--tfidf --sampler mpc --share-parent`), seed 0.
-- **Code:** [route_eval.py](../src/project3/pilot/route_eval.py).
+- **Code:** [route_eval.py](../src/project3/model/routing.py).
 - **Dữ liệu:** kernel `p3-log-repr` (2 fold, `--save-repr`, lưu attention từng đoạn + z), kết quả `data/results/log_model/v5_repr/`.
 
 ## E1. Phân luồng theo tầng 1 (5 fold, 43.613 run, dự đoán có sẵn)

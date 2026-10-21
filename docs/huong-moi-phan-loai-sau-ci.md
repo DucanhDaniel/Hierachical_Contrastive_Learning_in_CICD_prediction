@@ -12,7 +12,7 @@
 
 - Đoán loại lỗi trước khi chạy thực chất vẫn là dự đoán pass/fail, chỉ chia nhỏ hơn. Bỏ pass/fail thì bài toán trước run mất lý do tồn tại.
 - Đoán "nếu commit fail thì fail kiểu gì" không dẫn tới hành động nào khi CI chưa chạy.
-- Đọc diff trước run chỉ đạt macro-F1 khoảng 0,49 (`pilot/type_feasibility.py`). Nhãn được rút ra từ log, nên log là tín hiệu trực tiếp, còn diff chỉ là tín hiệu gián tiếp.
+- Đọc diff trước run chỉ đạt macro-F1 khoảng 0,49 (`legacy/.../pilot/type_feasibility.py`). Nhãn được rút ra từ log, nên log là tín hiệu trực tiếp, còn diff chỉ là tín hiệu gián tiếp.
 
 ## 3. Pain point sau run: rerun hay sửa code
 

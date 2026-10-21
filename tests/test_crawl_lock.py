@@ -2,16 +2,17 @@
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
-import uuid
 
 from project3.crawl.gha import crawl_lock
 
 
 class CrawlLockTest(unittest.TestCase):
     def test_second_process_waits_until_release(self):
-        root = Path('data') / f'lock_test_{uuid.uuid4().hex}'
-        root.mkdir(parents=True)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
         marker = root / 'acquired.txt'
         code = ("from pathlib import Path\nfrom project3.crawl.gha import crawl_lock\n"
                 "print('started', flush=True)\n"

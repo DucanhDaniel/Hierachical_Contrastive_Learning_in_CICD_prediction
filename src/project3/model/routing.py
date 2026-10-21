@@ -1,12 +1,13 @@
-"""Đánh giá vai trò định tuyến của mô hình (20/10/2026, docs/ket-qua-baseline-llm-2026-10-20.md, hướng kết hợp với LLM).
+"""Đánh giá vai trò định tuyến của mô hình (20/10/2026, docs/ket-qua-dinh-tuyen-2026-10-20.md, hướng kết hợp với LLM).
 
 E2  attention chỉ đúng chỗ: đoạn log được chú ý nhiều nhất có chứa dòng bằng chứng của quy tắc không (hit@1, hit@3),
     so với lấy đoạn cuối / ngẫu nhiên. Chỉ tính run có ít nhất một đoạn chứa bằng chứng (key = 120 ký tự đầu dòng bằng chứng).
 E4  định tuyến theo độ tin cậy: AUROC phát hiện dự đoán sai (mức lá) và đường cong "giữ lại x% run tự tin nhất -> độ đúng";
     tín hiệu: (a) xác suất của mô hình (logp), (b) kNN trên z (độ tương đồng TB tới 10 láng giềng train, tỉ lệ láng giềng
-    đồng ý với dự đoán). Ước tính độ đúng cả hệ thống nếu run bị chuyển sang LLM đạt LLM_ACC (đo ở llm_baseline).
+    đồng ý với dự đoán). Ước tính độ đúng cả hệ thống nếu run bị chuyển sang LLM đạt LLM_ACC (đo ở model.llm).
 
-    python -m project3.pilot.route_eval data/results/log_model/v5_repr
+Cần output của model.train --save-repr.
+    python -m project3.model.routing data/results/log_model/v5_repr
 """
 import json
 import sys
@@ -16,11 +17,14 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-PACK = Path("data/kaggle_log_ds")
+from .config import PACK
+from .data import read_fold_outputs
+from .labels import LabelTree
+
 LLM_ACC = 0.724  # độ đúng mức lá của LLM bản 1 trên mẫu nhãn quy tắc (log nguyên vẹn), thay khi có số tốt hơn
 
 
-def e2(p: pd.DataFrame, runs: pd.DataFrame, ch: pd.DataFrame) -> list[dict]:
+def e2(p: pd.DataFrame, runs: pd.DataFrame, ch: pd.DataFrame) -> list:
     key = runs.key.fillna("").to_dict()
     text = {(r, j, c): t for r, j, c, t in zip(ch.run_id, ch.job_rank, ch.chunk_rank, ch.text)}
     out = []
@@ -43,13 +47,13 @@ def e2(p: pd.DataFrame, runs: pd.DataFrame, ch: pd.DataFrame) -> list[dict]:
     return out
 
 
-def e4(p: pd.DataFrame, tr: pd.DataFrame, runs: pd.DataFrame, L: list[str]) -> list[dict]:
-    out, curves = [], {}
+def e4(p: pd.DataFrame, tr: pd.DataFrame, runs: pd.DataFrame, n_leaves: int) -> list:
+    out = []
     for (v, fold), g in p[p.test == "full"].groupby(["variant", "fold"]):
         y = g.run_id.map(runs.leaf).values
         ok = np.asarray(g.pred, dtype=object) == np.asarray(y, dtype=object)
         lp = np.stack(g.logp.values).astype(np.float32)
-        conf_p = lp[:, -len(L):].max(1)  # log xác suất lá cao nhất (đầu tầng 3)
+        conf_p = lp[:, -n_leaves:].max(1)  # log xác suất lá cao nhất (đầu tầng 3)
         t = tr[(tr.variant == v) & (tr.fold == fold)]
         Z = np.stack(t.z.values).astype(np.float32)
         Z /= np.linalg.norm(Z, axis=1, keepdims=True) + 1e-6
@@ -74,17 +78,17 @@ def e4(p: pd.DataFrame, tr: pd.DataFrame, runs: pd.DataFrame, L: list[str]) -> l
     return out
 
 
-def main(d: Path) -> None:
-    runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
-    L = json.loads((PACK / "label_tree.json").read_text(encoding="utf-8"))["l3"]
-    p = pd.concat([pd.read_parquet(f).assign(fold=int(f.name.split("fold")[1][0])) for f in sorted(d.glob("results_fold*.preds.parquet"))])
-    tr = pd.concat([pd.read_parquet(f).assign(fold=int(f.name.split("fold")[1][0])) for f in sorted(d.glob("results_fold*.train_*.parquet"))])
-    ch = pd.read_parquet(PACK / "chunks.parquet").sort_values(["run_id", "job_id", "chunk_idx"])
+def main(d: Path, pack: Path = PACK) -> None:
+    runs = pd.read_parquet(pack / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
+    n_leaves = len(LabelTree.load(pack / "label_tree.json").l3)
+    p = read_fold_outputs(d, "results_fold*.preds.parquet")
+    tr = read_fold_outputs(d, "results_fold*.train_*.parquet")
+    ch = pd.read_parquet(pack / "chunks.parquet").sort_values(["run_id", "job_id", "chunk_idx"])
     ch = ch[ch.run_id.isin(set(p.run_id))]
-    ch["job_rank"] = ch.groupby("run_id").job_id.rank(method="dense").astype(int) - 1  # cùng thứ tự với log_hcl.load
+    ch["job_rank"] = ch.groupby("run_id").job_id.rank(method="dense").astype(int) - 1  # cùng thứ tự với data.load_pack
     ch["chunk_rank"] = ch.groupby(["run_id", "job_id"]).cumcount()
     r2 = pd.DataFrame(e2(p, runs, ch))
-    r4 = pd.DataFrame(e4(p, tr, runs, L))
+    r4 = pd.DataFrame(e4(p, tr, runs, n_leaves))
     pd.set_option("display.width", 250)
     print("E2 — attention chỉ đúng đoạn chứa bằng chứng\n", r2.round(3).to_string(index=False))
     print("\nE4 — định tuyến theo độ tin cậy (TB các fold)\n",

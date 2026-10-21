@@ -48,8 +48,8 @@ Ranh giới giữa hai admin: **Admin dữ liệu tạo ra model** (dataset → 
 | 2. Crawl CI | `repos.txt`, số ngày, loại sự kiện | `runs.jsonl`, `jobs.jsonl` (job, step, thời gian), `logs/<job_id>.txt` của job fail | `crawl/gha.py`, `crawl/github.py` |
 | 3. Gán nhãn bằng quy tắc | Log job fail | `gold_labels.csv`: run_id, nhãn, **dòng bằng chứng** khớp quy tắc | `crawl/gold_labels.py` |
 | 4. Gộp theo commit | Run + nhãn | `commits.parquet`: commit, chuỗi build, outcome, nhãn tầng 2, lần fail đầu | `crawl/build_log_labels.py` |
-| 5. Lấy diff | Danh sách SHA | `diffs/<repo>/<sha>.{pr,commit}.diff` | `pilot/fetch_diffs.py` |
-| 6. Nhãn tầng 3 | Dòng bằng chứng | `fine_labels.parquet`: dạng lỗi chi tiết, module lỗi | `pilot/fine_labels.py` |
+| 5. Lấy diff | Danh sách SHA | `diffs/<repo>/<sha>.{pr,commit}.diff` | `pipeline/fetch_diffs.py` |
+| 6. Nhãn tầng 3 | Dòng bằng chứng | `fine_labels.parquet`: dạng lỗi chi tiết, module lỗi | `crawl/fine_labels.py` |
 | 7. Báo cáo | Toàn bộ trên | Thống kê độ phủ theo repo: số run, tỉ lệ fail, phân bố loại lỗi, log thiếu, diff thiếu | `crawl/crawl_report.py` |
 
 Một mẫu dữ liệu đầu ra gồm: `repo, sha, chuỗi build, thời điểm, outcome, nhãn tầng 2, nhãn tầng 3, module, dòng bằng chứng, đường dẫn diff, feature lịch sử`.
@@ -234,9 +234,9 @@ Một mẫu dữ liệu đầu ra gồm: `repo, sha, chuỗi build, thời đi�
 | 7 | US-01 | Cấu hình phạm vi crawl | EP-01 | Admin dữ liệu | M | 2 | S1 | | Done |
 | 8 | US-06 | Nhãn tầng 2 bằng quy tắc + dòng bằng chứng | EP-02 | Admin dữ liệu | M | 5 | S1 | ● | Done (cần xuất bảng quy tắc, AC-06.3) |
 | 9 | US-08 | Tập người gán mù ≥ 200 run, precision/recall/kappa | EP-02 | Admin dữ liệu | M | 5 | S1 | ● | To do (mẫu 103 run hiện có chưa phải nhãn do người gán độc lập) |
-| 10 | US-11 | Bảng baseline: tỉ lệ lớp, Parrot, chỉ metadata, TF-IDF, CE | EP-03 | Admin dữ liệu | M | 3 | S1 | ● | Done (`pilot/type_feasibility.py`) |
+| 10 | US-11 | Bảng baseline: tỉ lệ lớp, Parrot, chỉ metadata, TF-IDF, CE | EP-03 | Admin dữ liệu | M | 3 | S1 | ● | Done (`legacy/.../pilot/type_feasibility.py`) |
 | 11 | US-35 | Tài liệu use case một trang | EP-08 | Reviewer | M | 2 | S1 | ● | To do (nội dung ở mục 1.2) |
-| 12 | US-07 | Nhãn tầng 3 + module | EP-02 | Admin dữ liệu | M | 3 | S1 | | Done (`pilot/fine_labels.py`) |
+| 12 | US-07 | Nhãn tầng 3 + module | EP-02 | Admin dữ liệu | M | 3 | S1 | | Done (`crawl/fine_labels.py`) |
 | 13 | US-09 | Lần fail đầu + feature lịch sử | EP-02 | Admin dữ liệu | M | 5 | S1 | | Done |
 | 14 | US-10 | Snapshot dataset | EP-02 | Admin dữ liệu | S | 2 | S1 | | In progress (có phiên bản dataset trên Kaggle, chưa có mã phiên bản riêng) |
 | 15 | US-32 | Mô phỏng báo lỗi sớm / tiết kiệm runner | EP-08 | Admin dữ liệu | S | 5 | S2 | | To do |
@@ -291,16 +291,16 @@ Dự đoán loại lỗi (compile / lint / test) trên commit fail do code, 11 r
 |---|---|---|---|---|---|---|---|
 | FR-01 Thu thập dữ liệu CI có kèm log | EP-01 | US-01, US-02 | AC-01.1–02.3 | Thu thập: Crawl GitHub API | `crawl/gha.py`, `crawl/github.py`, `crawl/checkpoint.py`, `scripts/crawl_*.ps1` | `test_crawl_checkpoint.py`, `test_crawl_lock.py`, `test_crawl_empty.py` | S1 |
 | FR-02 Bổ sung dữ liệu thiếu | EP-01 | US-03 | AC-03.1–03.2 | Thu thập | `crawl/retry_plan.py` | `test_crawl_retry.py` | S1 |
-| FR-03 Lấy diff commit | EP-01 | US-04 | AC-04.1–04.2 | Thu thập: git clone, git diff | `pilot/fetch_diffs.py`, `crawl/diff_probe.py` | TC-04 (chưa có) | S1 |
+| FR-03 Lấy diff commit | EP-01 | US-04 | AC-04.1–04.2 | Thu thập: git clone, git diff | `pipeline/fetch_diffs.py`, `crawl/diff_probe.py` | TC-04 (chưa có) | S1 |
 | FR-04 Báo cáo độ phủ dữ liệu | EP-01 | US-05 | AC-05.1 | Thu thập | `crawl/crawl_report.py`, `crawl/analyze.py` | TC-05 (chưa có) | S1 |
 | FR-21 Pipeline một lệnh, ≥ 100 repo | EP-01 | US-30, US-31 | AC-30.1–31.1 | Thu thập | (chưa có: `project3/pipeline.py`) | TC-30 (demo 1–2 repo) | S1 |
-| FR-05 Gán nhãn loại lỗi bằng quy tắc | EP-02 | US-06, US-07 | AC-06.1–07.1 | Xử lý & gán nhãn | `crawl/gold_labels.py`, `crawl/build_log_labels.py`, `pilot/fine_labels.py` | `test_gold_labels.py`, TC-07 | S1 |
+| FR-05 Gán nhãn loại lỗi bằng quy tắc | EP-02 | US-06, US-07 | AC-06.1–07.1 | Xử lý & gán nhãn | `crawl/gold_labels.py`, `crawl/build_log_labels.py`, `crawl/fine_labels.py` | `test_gold_labels.py`, TC-07 | S1 |
 | FR-06 Kiểm chứng nhãn bằng tập người gán | EP-02 | US-08, US-33 | AC-08.1–08.2, AC-33.1 | Xử lý & gán nhãn | `crawl/review_sample.py`, `crawl/review_dump.py` (rút mẫu); công cụ gán mù (chưa có) | TC-08 | S1 |
-| FR-07 Chuỗi build, lần fail đầu, feature lịch sử | EP-02 | US-09 | AC-09.1–09.2 | DuckDB: nhãn, lịch sử, feature | `pilot/experiment.py`, `pilot/hcl_train.py` (meta) | TC-09 (kiểm tra không rò rỉ thời gian) | S1 |
+| FR-07 Chuỗi build, lần fail đầu, feature lịch sử | EP-02 | US-09 | AC-09.1–09.2 | DuckDB: nhãn, lịch sử, feature | `legacy/.../pilot/experiment.py`, `legacy/.../pilot/hcl_train.py` (meta) | TC-09 (kiểm tra không rò rỉ thời gian) | S1 |
 | FR-08 Phiên bản dataset | EP-02 | US-10 | AC-10.1 | DuckDB | (chưa có) | TC-10 | S1 |
-| FR-09 Bảng baseline | EP-03 | US-11, US-11b | AC-11.1–11.2 | Học máy | `pilot/type_feasibility.py` (baselines) | TC-11 | S1–S2 |
-| FR-10 Mô hình HCL | EP-03 | US-12 | AC-12.1–12.2 | Encoder phân cấp, HCL head | `pilot/type_feasibility.py` (finetune), `pilot/hcl_embed.py`, `scripts/kaggle/hcl_full/run.py` | TC-12 | S2 |
-| FR-11 Đánh giá P1–P3, ablation | EP-03 | US-13, US-14 | AC-13.1–14.1 | Học máy | `pilot/type_feasibility.py` (`--holdout`, `--label-frac`, `--sampler`) | TC-13 | S2 |
+| FR-09 Bảng baseline | EP-03 | US-11, US-11b | AC-11.1–11.2 | Học máy | `legacy/.../pilot/type_feasibility.py` (baselines) | TC-11 | S1–S2 |
+| FR-10 Mô hình HCL | EP-03 | US-12 | AC-12.1–12.2 | Encoder phân cấp, HCL head | `legacy/.../pilot/type_feasibility.py` (finetune), `legacy/.../pilot/hcl_embed.py`, `scripts/kaggle/hcl_full/run.py` | TC-12 | S2 |
+| FR-11 Đánh giá P1–P3, ablation | EP-03 | US-13, US-14 | AC-13.1–14.1 | Học máy | `legacy/.../pilot/type_feasibility.py` (`--holdout`, `--label-frac`, `--sampler`) | TC-13 | S2 |
 | FR-22 Đo giá trị use case | EP-08 | US-32, US-35 | AC-32.1, AC-35.1 | Học máy → Tích hợp | (chưa có) | TC-32 | S1–S2 |
 | FR-12 Quản lý phiên bản model | EP-03, EP-06 | US-15, US-24 | AC-15.1, AC-24.1–24.2 | Model registry | (chưa có) | TC-15, TC-24 | S2–S3 |
 | FR-13 Dự đoán trước khi CI chạy xong | EP-04 | US-16 | AC-16.1–16.2 | FastAPI /predict | (chưa có) | TC-16 | S3 |

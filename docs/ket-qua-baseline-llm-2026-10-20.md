@@ -4,7 +4,7 @@
 - **Mô hình:** Gemini 3.5 Flash-Lite qua Kaggle Benchmarks (quota AI). Zero-shot, không ví dụ mẫu.
 - **Chi phí:** 905 lời gọi, tổng **$0,95** (khoảng $0,001 mỗi run).
 - **Code:**
-  - [llm_baseline.py](../src/project3/pilot/llm_baseline.py): `prepare` và `score`.
+  - [llm_baseline.py](../src/project3/model/llm.py): `prepare` và `score`.
   - [task.py](../scripts/kaggle/llm_baseline/task.py): task Kaggle `p3-llm-baseline`.
 - **Kết quả:** `data/results/llm_baseline/` (llm_preds.parquet, scores.csv).
 

@@ -3,9 +3,9 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import uuid
 
 from project3.crawl.gha import crawl_repo
 
@@ -13,7 +13,9 @@ from project3.crawl.gha import crawl_repo
 class EmptyCrawlTest(unittest.TestCase):
     def test_no_failure_and_no_workflows(self):
         for workflows in ([], [{'id': 1, 'name': 'CI', 'path': '.github/workflows/ci.yml'}]):
-            root = Path('data') / f'empty_crawl_test_{uuid.uuid4().hex}'
+            tmp = tempfile.TemporaryDirectory()
+            self.addCleanup(tmp.cleanup)
+            root = Path(tmp.name)
             gh = Mock(remaining=5000)
             run = {'id': 1, 'head_branch': 'main', 'conclusion': 'success'}
             with patch('project3.crawl.gha.ci_workflows', return_value=workflows), \

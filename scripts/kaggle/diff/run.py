@@ -1,7 +1,7 @@
 """Kernel Kaggle lấy diff cho một shard (danh sách commit ở /kaggle/input/p3-diff-input/todo.csv).
 
 Clone đầy đủ (không --filter) vì trên Kaggle mạng/đĩa dư, tránh mỗi lần diff lại tải blob lẻ.
-Diff giống pilot/fetch_diffs.py: push `sha^..sha`, PR `merge-base(origin/HEAD, sha)..sha`, cắt 2 MB, nén gzip.
+Diff giống pipeline/fetch_diffs.py: push `sha^..sha`, PR `merge-base(origin/HEAD, sha)..sha`, cắt 2 MB, nén gzip.
 Repo có nhiều commit fail làm trước; hết ngân sách thời gian thì dừng, phần chưa làm để phiên sau.
 Đầu ra: /kaggle/working/diffs_<shard>.tar (diffs/<repo__>/<sha>.<kind>.diff.gz) + index_<shard>.csv + summary_<shard>.json
 """
@@ -40,7 +40,7 @@ def left_min():
 
 
 def prepare(repo, d):
-    # clone đầy đủ nhanh nhất cho diff; lỗi (repo quá lớn, mạng) thì thử partial clone như pilot/fetch_diffs.py
+    # clone đầy đủ nhanh nhất cho diff; lỗi (repo quá lớn, mạng) thì thử partial clone như pipeline/fetch_diffs.py
     for extra in ([], ["--filter=blob:none"]):
         shutil.rmtree(d, ignore_errors=True)
         try:

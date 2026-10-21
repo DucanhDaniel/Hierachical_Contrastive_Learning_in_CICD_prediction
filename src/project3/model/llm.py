@@ -1,55 +1,51 @@
-"""Baseline LLM phân loại lỗi CI từ log (20/10/2026): CHỈ để so sánh, không phải nguồn nhãn (C-02).
+"""Baseline LLM phân loại lỗi CI từ log (20/10/2026, docs/ket-qua-baseline-llm-2026-10-20.md): CHỈ để so sánh,
+không phải nguồn nhãn (C-02). Chạy ở máy local; LLM chạy trên Kaggle Benchmarks (scripts/kaggle/llm_baseline/task*.py).
 
-Chạy trên Kaggle Benchmarks (quota AI, model proxy), task ở scripts/kaggle/llm_baseline/task.py.
 Hai tập chấm:
   human  ~200 run vòng gán mù 10/10 (nhãn người tầng 2 sau phân xử, bỏ 'unclear'), log nguyên vẹn
-  model  PER_LEAF run mỗi lá lấy từ data/kaggle_log_ds (nhãn quy tắc), cả log nguyên vẹn và log đã che bằng chứng;
-         so trực tiếp với dự đoán của TF-IDF A / mô hình lai trên đúng các run đó (mỗi run nằm ở fold test đúng 1 lần)
+  model  PER_LEAF run mỗi lá lấy từ gói dữ liệu (nhãn quy tắc), cả log nguyên vẹn và log đã che bằng chứng;
+         so trực tiếp với dự đoán của quy tắc / TF-IDF A / mô hình lai trên đúng các run đó (fold test của run)
 Đầu vào cho LLM: ngữ cảnh CI + MAX_CHARS ký tự cuối của các đoạn log (như mô hình đọc), không lọc theo chữ ERROR.
 
-    python -m project3.pilot.llm_baseline prepare     # -> data/results/llm_baseline/sample.parquet + ds/sample.jsonl (dataset p3-llm-sample)
-    python -m project3.pilot.llm_baseline score DIR   # DIR = thư mục `kaggle b t download`
+    python -m project3.model.llm prepare     # -> data/results/llm_baseline/sample.parquet + ds/sample.jsonl (dataset p3-llm-sample)
+    python -m project3.model.llm score DIR   # DIR = thư mục `kaggle b t download`
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
 
-OUT = Path("data/results/llm_baseline")
-PACK = Path("data/kaggle_log_ds")
+from .config import BASELINE_OUT, HUMAN_LABELS, LLM_OUT as OUT, LOG_MODEL_OUT, PACK, RUN_DATASET
+from .data import job_texts
+from .labels import LabelTree
+from .text import mask_text
+
 MAX_CHARS, PER_LEAF, SEED = 12_000, 25, 20261020
+# chỉ số lá LLM trả về; phải trùng LEAVES trong scripts/kaggle/llm_baseline/task*.py (tests/test_model.py kiểm tra)
 LEAVES = ["testfailure", "itestfailure", "compile", "buildconfig", "dependency", "quality", "doc", "license",
           "compatibility", "git", "crash", "androidsdk", "network", "flaky", "infra"]
-
-
-def mask_text(text: str, key: str) -> str:
-    return "\n".join(l for l in text.splitlines() if key not in l) if key else text
+# mô hình so cùng LLM trên tập model: (tên, thư mục trong LOG_MODEL_OUT, biến thể)
+COMPARE = (("lai CE", "v3_tfidf", "ce"), ("lai + sampler HCL", "v4_rare", "hcl"))
 
 
 def run_texts(run_ids) -> dict:
-    ids = ",".join(map(str, run_ids))
-    ch = duckdb.sql(f"""SELECT run_id, job_id, string_agg(text, chr(10) ORDER BY chunk_idx) txt
-                        FROM 'data/run_dataset/chunks.parquet' WHERE run_id IN ({ids})
-                        GROUP BY run_id, job_id ORDER BY run_id, job_id""").df()
-    out = {}
-    for r in ch.itertuples():
-        out.setdefault(r.run_id, []).append(r.txt)
-    return {k: "\n".join(v) for k, v in out.items()}
+    jobs = job_texts(f"run_id IN ({','.join(map(str, run_ids))})")
+    return {k: "\n".join(v) for k, v in jobs.items()}
 
 
 def prepare() -> None:
+    import duckdb
     (OUT / "ds").mkdir(parents=True, exist_ok=True)
-    meta = duckdb.sql("""SELECT run_id, repository, workflow, failed_job_names FROM 'data/run_dataset/runs.parquet'""").df()
+    meta = duckdb.sql(f"SELECT run_id, repository, workflow, failed_job_names FROM '{RUN_DATASET / 'runs.parquet'}'").df()
     meta = meta.drop_duplicates("run_id").set_index("run_id")
     # tập human: nhãn mù, ghi đè bằng kết quả phân xử
     lab = {}
     for f in ("labels.jsonl", "adjudication.jsonl"):
-        for l in open(Path("data/human_labels") / f, encoding="utf-8"):
+        for l in open(HUMAN_LABELS / f, encoding="utf-8"):
             d = json.loads(l)
             lab[d["run_id"]] = d["label"]
     human = pd.DataFrame({"run_id": list(lab), "gold_l2": list(lab.values())})
@@ -80,11 +76,11 @@ def prepare() -> None:
 
 
 def model_preds(run_ids) -> pd.DataFrame:
-    """Dự đoán của các mô hình khác trên cùng run (fold test của run): quy tắc, TF-IDF A, lai CE, lai + sampler HCL."""
+    """Dự đoán của các mô hình khác trên cùng run (fold test của run): quy tắc, TF-IDF A, các mô hình trong COMPARE."""
     runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
-    classes = sorted(runs.leaf.unique())  # cùng thứ tự cột như tfidf_feats
+    classes = sorted(runs.leaf.unique())  # cùng thứ tự cột như model.tfidf
     rows = []
-    b = pd.read_parquet("data/results/log_baselines/preds.parquet")
+    b = pd.read_parquet(BASELINE_OUT / "preds.parquet")
     b = b[(b.model == "rule") & b.split.str.startswith("repo_fold") & b.run_id.isin(run_ids)]
     rows += [("quy tắc", t, r, p) for t, r, p in zip(b.test, b.run_id, b.pred)]
     for k in range(5):
@@ -92,8 +88,8 @@ def model_preds(run_ids) -> pd.DataFrame:
         te = [r for r in run_ids if r in runs.index and runs.repo_fold[r] == k]
         for t in ("full", "masked"):
             rows += [("TF-IDF A", t, r, classes[int(np.argmax(f[t][r]))]) for r in te]
-        for name, d, v in (("lai CE", "v3_tfidf", "ce"), ("lai + sampler HCL", "v4_rare", "hcl")):
-            q = pd.read_parquet(f"data/results/log_model/{d}/results_fold{k}.preds.parquet")
+        for name, d, v in COMPARE:
+            q = pd.read_parquet(LOG_MODEL_OUT / d / f"results_fold{k}.preds.parquet")
             q = q[(q.variant == v) & q.run_id.isin(te)]
             rows += [(name, t, r, p) for t, r, p in zip(q.test, q.run_id, q.pred)]
     return pd.DataFrame(rows, columns=["model", "test", "run_id", "pred"]).drop_duplicates(["model", "test", "run_id"])
@@ -109,9 +105,10 @@ def metrics(y, p, par) -> dict:
 
 def score(d: Path) -> None:
     """Gộp kết quả `kaggle b t download` (mỗi *.run.json một dòng: chỉ số lá, -1 = unknown) và so với nhãn + mô hình."""
+    import duckdb
     s = pd.read_parquet(OUT / "sample.parquet")
-    tree = json.loads((PACK / "label_tree.json").read_text(encoding="utf-8"))
-    par = {**tree["parent"], "infra": "infra", "unknown": "unknown"}
+    tree = LabelTree.load(PACK / "label_tree.json")
+    par = {**tree.parent, "infra": "infra", "unknown": "unknown"}
     pred = {}
     for f in d.rglob("*.run.json"):
         j = json.loads(f.read_text(encoding="utf-8"))
@@ -126,7 +123,7 @@ def score(d: Path) -> None:
     s = s[s.llm.notna()]
     out = []
     h = s[s["set"] == "human"]
-    rule = duckdb.sql(f"SELECT run_id, coalesce(label_l2, '?') l2 FROM 'data/run_dataset/runs.parquet' "
+    rule = duckdb.sql(f"SELECT run_id, coalesce(label_l2, '?') l2 FROM '{RUN_DATASET / 'runs.parquet'}' "
                       f"WHERE run_id IN ({','.join(map(str, h.run_id))})").df().drop_duplicates("run_id").set_index("run_id").l2
     for name, p2 in (("LLM", [par.get(x, x) for x in h.llm]), ("quy tắc", h.run_id.map(rule).fillna("?").tolist())):
         y = h.gold_l2.tolist()
@@ -154,7 +151,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("prepare")
-    sc = sub.add_parser("score")
-    sc.add_argument("dir", type=Path)
+    sub.add_parser("score").add_argument("dir", type=Path)
     a = ap.parse_args()
     prepare() if a.cmd == "prepare" else score(a.dir)

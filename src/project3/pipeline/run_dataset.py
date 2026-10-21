@@ -26,7 +26,7 @@ import pandas as pd
 
 from project3.crawl.build_log_labels import GROUP
 from project3.crawl.gold_labels import AGG_JOB, RULE_VERSION
-from project3.pilot.fine_labels import subtype
+from project3.crawl.fine_labels import subtype
 
 ROOTS = {"data/crawl_pr": "pull_request", "data/validate": "push"}
 OUT = Path("data/run_dataset")

@@ -3,10 +3,10 @@
 Bước 3 trong [huong-moi-phan-loai-sau-ci.md](huong-moi-phan-loai-sau-ci.md). Baseline: [ket-qua-baseline-log-2026-10-18.md](ket-qua-baseline-log-2026-10-18.md).
 
 - **Mô hình nơ-ron:**
-  - Code: [log_hcl.py](../src/project3/pilot/log_hcl.py); dữ liệu đóng gói bằng [log_pack.py](../src/project3/pipeline/log_pack.py).
+  - Code: [log_hcl.py](../src/project3/model/train.py); dữ liệu đóng gói bằng [log_pack.py](../src/project3/pipeline/log_pack.py).
   - Chạy trên kernel `p3-log-hcl`; kết quả ở `data/results/log_model/v2/`.
 - **TF-IDF so sánh công bằng:**
-  - Code: [log_baselines_fair.py](../src/project3/pilot/log_baselines_fair.py).
+  - Code: [log_baselines_fair.py](../src/project3/model/baselines.py (fair)).
   - Kết quả: `data/results/log_baselines/fair.json`.
 - **Cách chia:**
   - 5 fold chéo repo; với fold k: test = k, val = k+1, train = 3 fold còn lại.
@@ -63,7 +63,7 @@ Bước 3 trong [huong-moi-phan-loai-sau-ci.md](huong-moi-phan-loai-sau-ci.md). 
 ## Mô hình lai: UniXcoder + xác suất TF-IDF (chạy 19/10, kết quả ở `data/results/log_model/v3_tfidf/`)
 
 - **Nhánh thêm:** log xác suất lá của TF-IDF A (30.000 ký tự cuối) -> 64 số, ghép cùng r và ngữ cảnh trước MLP (`log_hcl --tfidf`).
-- **Đặc trưng theo kiểu stacking** ([tfidf_feats.py](../src/project3/pilot/tfidf_feats.py)):
+- **Đặc trưng theo kiểu stacking** ([tfidf_feats.py](../src/project3/model/tfidf.py)):
   - Run train: xác suất out-of-fold (TF-IDF fit trên 2 fold train còn lại, chia theo repo).
   - Run val/test: TF-IDF fit trên cả 3 fold train.
   - Kiểm tra: argmax của xác suất trên fold test khớp đúng điểm TF-IDF A.

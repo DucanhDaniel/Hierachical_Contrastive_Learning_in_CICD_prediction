@@ -1,6 +1,6 @@
 # %% [markdown]
 # Baseline LLM phân loại lỗi CI từ log, bản 2: prompt ghi rõ quy ước của đề tài (project3, 20/10/2026). Chỉ để so sánh, không phải nguồn nhãn.
-# Dữ liệu: dataset ducanhpham2k5/p3-llm-sample (sample.jsonl do `python -m project3.pilot.llm_baseline prepare`).
+# Dữ liệu: dataset ducanhpham2k5/p3-llm-sample (sample.jsonl do `python -m project3.model.llm prepare`).
 # Mỗi dòng trả về chỉ số lá trong LEAVES (-1 = unknown / trả lời không hợp lệ).
 #   kaggle b t push p3-llm-baseline-v2 -f scripts/kaggle/llm_baseline/task_v2.py -d ducanhpham2k5/p3-llm-sample --wait
 #   kaggle b t run p3-llm-baseline-v2 -m gemini-3.5-flash-lite --wait

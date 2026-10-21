@@ -6,11 +6,10 @@ Diff dùng làm input là phần CI thực sự build:
 Repo chưa có thì clone partial (blob:none, không checkout); nhánh chính được fetch lại trước khi tính merge-base.
 Commit thiếu được fetch theo lô bằng `git fetch origin <sha>...`; blob được git tự tải khi chạy diff.
 Kết quả: data/diffs/<repo>/<sha>.<kind>.diff.gz (nén để vừa ổ đĩa khi mở rộng ~100 repo; file .diff cũ vẫn dùng được)
-và data/processed/pilot_diffs.csv. Đọc bằng `experiment.read_diff()`.
+và bảng chỉ mục --out (pipeline.run gộp vào data/processed/diffs_all.csv). Đọc bằng `gzip.open`.
 
-    uv run --group exp python -m project3.pilot.fetch_diffs --repos apache/druid apache/paimon
-    uv run --group exp python -m project3.pilot.fetch_diffs --table data/processed/commits_all.parquet
-        --repos apache/pinot apache/ozone ... --include-unlabeled --out data/processed/diffs_extra.csv
+    python -m project3.pipeline.fetch_diffs --table data/processed/commits_all.parquet
+        --repos apache/pinot apache/ozone ... --include-unlabeled --out data/processed/diffs_run.csv
     # 100 repo: clone và diff ở ổ C, xoá clone sau mỗi repo
     ... --clones C:/p3data/repos --diffs C:/p3data/diffs --cleanup
 """
@@ -27,7 +26,17 @@ from pathlib import Path
 
 import duckdb
 
-from project3.crawl.diff_probe import git, has_commit
+
+
+def git(repo_dir: Path, *args: str, timeout: int = 600, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo_dir), *args], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=timeout,
+                          env={**os.environ, **env} if env else None)
+
+
+def has_commit(repo_dir: Path, sha: str) -> bool:
+    # clone blob:none là partial clone: thiếu object thì git tự tải từ origin, nên tắt lazy fetch để kiểm tra thật
+    return git(repo_dir, "cat-file", "-e", f"{sha}^{{commit}}", env={"GIT_NO_LAZY_FETCH": "1"}).returncode == 0
 
 MAX_BYTES = 2_000_000
 REPACK_EVERY = 500
@@ -129,11 +138,11 @@ def main(table: Path, repos: list[str], clones: Path, diffs: Path, out: Path, wo
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--table", default="data/processed/commits_pilot.parquet")
-    ap.add_argument("--repos", nargs="+", default=["apache/druid", "apache/paimon"])
+    ap.add_argument("--table", default="data/processed/commits_all.parquet")
+    ap.add_argument("--repos", nargs="+", required=True)
     ap.add_argument("--clones", default="data/repos")
     ap.add_argument("--diffs", default="data/diffs")
-    ap.add_argument("--out", default="data/processed/pilot_diffs.csv")
+    ap.add_argument("--out", required=True, help="bảng chỉ mục diff của lần chạy này")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--cleanup", action="store_true", help="xoá clone của mỗi repo sau khi lấy xong diff")
     ap.add_argument("--include-unlabeled", action="store_true", help="lấy cả commit fail chưa gán nhãn (cause = '?')")

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from project3.crawl import gold_labels as gold
 from project3.crawl.build_log_labels import PRIORITY
-from project3.pilot.fine_labels import PARENT, subtype
+from project3.crawl.fine_labels import PARENT, subtype
 
 SIGNALS = {
     "resolve_summary": r"Could not resolve dependencies|Could not resolve all (?:files|dependencies|artifacts)|could not be resolved|Non-resolvable (?:parent|import) POM|Unresolveable build extension",
@@ -314,7 +314,7 @@ def main(scope, proposed, directory, inventory_only=False, seed=20261018, worker
     count = nonbuild_count = parity_errors = 0
     slow = []
     limited = []
-    snapshot = {"scope": sha(scope), "gold_labels.py": sha(gold.__file__), "label_rules.json": sha(gold.FALLBACK_RULES_PATH), "fine_labels.py": sha(Path(__file__).parents[1] / "pilot/fine_labels.py")}
+    snapshot = {"scope": sha(scope), "gold_labels.py": sha(gold.__file__), "label_rules.json": sha(gold.FALLBACK_RULES_PATH), "fine_labels.py": sha(Path(__file__).parents[1] / "crawl/fine_labels.py")}
     with out.path("run_results.jsonl").open("w", encoding="utf-8") as results:
         for item, prepared_jobs, prepared_base, prepare_seconds in prepared_scope(scope, workers if not inventory_only else 0):
             row, run, all_jobs, available, absent = item
@@ -461,7 +461,7 @@ def main(scope, proposed, directory, inventory_only=False, seed=20261018, worker
                "elapsed_seconds": round(time.perf_counter()-start,2), "q3_other_job_limit": len(limited), "human_conflict_records": len(conflicts), "new_human_conflicts": sum(r["introduced"] for r in conflicts),
                "commit_scope_note": "Only scoped failed runs; commit counts are estimates, missing successful/non-scoped runs. Key is (repo, sequence, head_sha)."}
     out.json("summary.json", summary)
-    after = {"scope":sha(scope), "gold_labels.py":sha(gold.__file__), "label_rules.json":sha(gold.FALLBACK_RULES_PATH), "fine_labels.py":sha(Path(__file__).parents[1] / "pilot/fine_labels.py")}
+    after = {"scope":sha(scope), "gold_labels.py":sha(gold.__file__), "label_rules.json":sha(gold.FALLBACK_RULES_PATH), "fine_labels.py":sha(Path(__file__).parents[1] / "crawl/fine_labels.py")}
     if snapshot != after:
         raise RuntimeError("Inputs changed during evaluation")
     out.json("manifest.json", {"scope":str(scope),"input_hashes":snapshot,"proposal_hash":sha(proposed) if proposed else None,"scope_manifest_hash":sha(Path(scope).with_suffix('.manifest.json')),"csv_drift":csv_drift,"log_count":len(read_paths),"log_paths_sha256":sha(out.path('log_paths.txt')),"elapsed_seconds":summary['elapsed_seconds'],"missing_runs":len(missing),"status":"completed","inventory_only":inventory_only})

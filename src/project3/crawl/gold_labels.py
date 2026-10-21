@@ -12,7 +12,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from .validate_labels import step_label
 
 RULE_VERSION = "2026-10-18-dependency-q1q3"
 FALLBACK_RULES_PATH = Path(__file__).resolve().parents[3] / "configs" / "label_rules.json"
@@ -251,24 +250,16 @@ def main(root: Path) -> None:
                 print(f"    CHẬM: run {row['run_id']} mất {time.time() - t_run:.0f}s "
                       f"({sum(map(len, texts)) // 1024} KB log)", flush=True)
             non_build = non_build or g == "non_build"
-            s, tier = step_label(row["jobs"])
             rows.append({"repo": d.name.replace("__", "/"), "run_id": row["run_id"], "workflow": run["name"],
-                         "non_build": non_build, "step_label": s, "gold": g, "evidence": ev})
+                         "non_build": non_build, "gold": g, "evidence": ev})
         print(f"    {len(rows) - n_before} run fail, {time.time() - t_repo:.0f}s "
               f"(tổng {(time.time() - t_root) / 60:.1f} phút)", flush=True)
     build = [r for r in rows if not r["non_build"]]
     print(f"Run fail: {len(rows)} (loại {len(rows) - len(build)} run của workflow không phải build)")
     print("Nhãn chuẩn từ log:", dict(Counter(r["gold"] for r in build).most_common()))
-    ev = [r for r in build if r["gold"] not in ("?", "(không có log)")]
-    norm = lambda s: s.split("+")[0] if s not in ("compile+test", "compile+lint") else "compile"
-    ok = sum(norm(r["step_label"]) == r["gold"] for r in ev)
-    print(f"Nhãn theo tên step đúng: {ok}/{len(ev)} ({ok / max(1, len(ev)):.0%})")
-    print("Đối chiếu (theo tên step → nhãn chuẩn):")
-    for (a, b), n in Counter((norm(r["step_label"]), r["gold"]) for r in ev).most_common():
-        print(f"   {a:12s} → {b:8s} {n}{'' if a == b else '   ✘'}")
     out = root / "gold_labels.csv"
     with out.open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["repo", "run_id", "workflow", "non_build", "step_label", "gold", "evidence"])
+        w = csv.DictWriter(f, fieldnames=["repo", "run_id", "workflow", "non_build", "gold", "evidence"])
         w.writeheader()
         w.writerows(rows)
     print(f"Đã lưu {out}")

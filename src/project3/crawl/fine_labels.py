@@ -15,7 +15,7 @@
 Một commit có thể có nhiều run fail: lấy các run mang đúng loại lỗi của commit (cột label trong commits_all),
 chọn subtype/module xuất hiện nhiều nhất.
 
-    uv run --group exp python -m project3.pilot.fine_labels --out data/processed/fine_labels.parquet
+    uv run --group exp python -m project3.crawl.fine_labels --out data/processed/fine_labels.parquet
 """
 import argparse
 import json
@@ -43,8 +43,6 @@ INFRA = [("git", r"fatal: |/usr/bin/git' failed|unable to access 'https://github
                      r"Could not transfer|Failed to (?:download|fetch|resolve action)|Docker pull failed|"
                      r"Temporary failure in name resolution|UnknownHost|Premature end|rate limit|429|ECONNRESET|"
                      r"could not connect|Unable to connect|Peer disconnected|Could not GET 'https?://|Unable to download artifact")]
-IT = re.compile(r"Tests run:|There (?:are|were) test failures|Test.*FAILED|FAILED.*Test|surefire|junit|"
-                  r"tests? completed, \d+ failed|AssertionError|expected:<|ComparisonFailure|:test\b|\btest FAILED", re.I)
 IT = re.compile(r"integration|\bIT\b|ITCase|\bIT[ -]|e2e|end.to.end|cluster|quickstart|smoke|compatib", re.I)
 MODULE = [re.compile(r"on project ([\w.\-]+)"),
           re.compile(r"task '?:([\w\-]+(?::[\w\-]+)*):\w+'?"),
