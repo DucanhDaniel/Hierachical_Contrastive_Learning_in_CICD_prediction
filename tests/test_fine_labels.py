@@ -37,3 +37,21 @@ def test_cross_branch_leaves():
     log = "[ERROR] Non-resolvable import POM: org.openrewrite:rewrite-bom:pom:8.91.0 absent"
     assert subtype("buildconfig", "'dependencies.dependency.version' for x:y:jar is missing.", "", "", log) == "dependency"
     assert subtype("buildconfig", "'dependencies.dependency.version' for x:y:jar is missing.", "", "") == "buildconfig"
+
+
+def test_infra_cause_from_log():
+    """29/10/2026 rà lá infra: nguyên nhân nằm trong log, dòng bằng chứng chỉ là triệu chứng."""
+    zip_ev = "Caused by: java.util.zip.ZipException: Archive is not a ZIP archive"
+    sdk = '"Install NDK (Side by side) 27.2.12479018 v.27.2.12479018" failed.\n' \
+          "> com.android.builder.sdk.InstallFailedException: Failed to install the following SDK components:"
+    assert subtype("infra", zip_ev, "", "", log=sdk) == "androidsdk"
+    assert subtype("infra", zip_ev, "", "", log="IO Error: Error while expanding jbang.zip") is None
+    # lỗi xác thực vẫn là infra dù job khác trong run cài SDK fail
+    assert subtype("infra", "google-github-actions/auth failed with: the GitHub Action workflow must specify", "", "",
+                   log=sdk) is None
+    assert subtype("infra", "> Could not HEAD 'https://repo.maven.apache.org/maven2/a/b/maven-metadata.xml'. "
+                            "Received status code 403 from server: Forbidden", "", "") == "network"
+    parent = "Non-resolvable parent POM for com.example:myproject:0.0.1-SNAPSHOT: The following artifacts could not be " \
+             "resolved: org.springframework.boot:spring-boot-starter-parent:pom:2.6.0 (absent): Could not tra"
+    assert subtype("infra", parent, "", "", log=parent + "nsfer artifact org.springframework.boot:x") == "network"
+    assert subtype("infra", parent, "", "", log=parent) is None

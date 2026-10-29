@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 
-RULE_VERSION = "2026-10-28-oom"  # 28/10: OOM là nguyên nhân -> infra/crash; quy tắc lint talk-android có guard
+RULE_VERSION = "2026-10-29-infra"  # 29/10: lá infra -> androidsdk/network theo log; lệch phiên bản Gradle -> buildconfig
 FALLBACK_RULES_PATH = Path(__file__).resolve().parents[3] / "configs" / "label_rules.json"
 
 

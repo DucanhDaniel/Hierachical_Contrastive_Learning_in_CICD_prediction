@@ -1063,10 +1063,10 @@
    "priority": 95
   },
   {
-   "label": "infra",
+   "label": "buildconfig",
    "regex": "Failed\\s+to\\s+apply\\s+plugin\\s+'com\\.android\\.internal\\.version\\-check'\\.",
    "signature": "[I] fireci.gradle: FAILURE: Build failed with an exception.",
-   "note": "",
+   "note": "29/10 infra -> buildconfig: AGP đòi Gradle mới hơn (Minimum supported Gradle version), sửa gradle-wrapper của dự án",
    "matches_unlabeled": 39,
    "conflicts_in_human_sample": [],
    "source_regex": "Failed\\s+to\\s+apply\\s+plugin\\s+'com\\.android\\.internal\\.version\\-check'\\.",
@@ -1159,10 +1159,10 @@
    "priority": 103
   },
   {
-   "label": "infra",
+   "label": "buildconfig",
    "regex": "Caused\\s+by:\\s+org\\.gradle\\.api\\.internal\\.tasks\\.DefaultTaskContainer\\$TaskCreationException:\\s+Could\\s+not\\s+creat",
    "signature": "Caused by: org.gradle.api.internal.tasks.DefaultTaskContainer$TaskCreationException: Could not create task ':grails-forge-web-netty:startShadowScripts'.",
-   "note": "",
+   "note": "29/10 infra -> buildconfig: build script dùng thuộc tính không còn (mainClassName), lỗi cấu hình build",
    "matches_unlabeled": 23,
    "conflicts_in_human_sample": [],
    "source_regex": "Caused\\s+by:\\s+org\\.gradle\\.api\\.internal\\.tasks\\.DefaultTaskContainer\\$TaskCreationException:\\s+Could\\s+not\\s+creat",
@@ -1570,6 +1570,6 @@
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-testcontainers:",
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-parquet-extensions:"
  ],
- "rule_version": "2026-10-28-oom",
+ "rule_version": "2026-10-29-infra",
  "note_bounded_quantifiers": "2026-10-14: \\S+ -> \\S{1,200} trong mọi regex để tránh backtracking thảm hoạ trên dòng log dài (kroxylicious run 34015278262, rule 42); không đổi ngữ nghĩa với token < 200 ký tự."
 }

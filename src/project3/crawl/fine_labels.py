@@ -51,6 +51,16 @@ INFRA = [("git", r"fatal: |/usr/bin/git' failed|unable to access 'https://github
                      r"Temporary failure in name resolution|UnknownHost|Premature end|rate limit|429|ECONNRESET|"
                      r"could not connect|Unable to connect|Peer disconnected|Could not GET 'https?://|Unable to download artifact")]
 LOCAL_SERVICE = re.compile(r"Connection refused[^\n]*(?:localhost|127\.0\.0\.1)|(?:localhost|127\.0\.0\.1)[^\n]*Connection refused", re.I)
+# 29/10/2026 (rà lá infra): dòng bằng chứng chỉ là triệu chứng, nguyên nhân nằm trong log.
+# ZipException khi cài Android SDK/NDK (gói tải về hỏng) -> androidsdk
+SDK_ARCHIVE = re.compile(r"ZipException|InstallFailedException|Failed to install")
+SDK_INSTALL = re.compile(r"InstallFailedException|Failed to install the following (?:Android )?SDK|\"Install (?:NDK|Android SDK)[^\"]*\" failed")
+# repo Maven/Gradle trả 403/4xx/5xx hoặc tải thất bại (Maven Central chặn, artifact tải dở) -> network
+HTTP_FAIL = re.compile(r"Could not (?:GET|HEAD) 'https?://|Received status code \d{3} from server|HTTP response code: \d{3}|"
+                       r"ClientProtocolException|failed to transfer from https?://|Download failed")
+UNRESOLVED = re.compile(r"Non-resolvable parent POM|Could not resolve dependencies|Unable to resolve dependencies|"
+                        r"or one of its dependencies could not be resolved")
+TRANSFER = re.compile(r"Could not transfer artifact")
 # compile -> lá khác (26/10): lỗi của bước format (google-java-format) và lệch phiên bản Kotlin metadata
 FORMATTER = re.compile(r"googlejavaformat|FormatterException")
 KOTLIN_VERSION = re.compile(r"incompatible version of Kotlin|metadata version|was compiled with an incompatible version|"
@@ -98,6 +108,10 @@ def subtype(label: str, ev: str, workflow: str, job: str, log: str = "", test_st
     if label == "infra":
         if not ev or LOCAL_SERVICE.search(ev):
             return None
+        if SDK_ARCHIVE.search(ev) and SDK_INSTALL.search(log):
+            return "androidsdk"
+        if HTTP_FAIL.search(ev) or (UNRESOLVED.search(ev) and TRANSFER.search(log)):
+            return "network"  # xét trước crash: regex crash có "timeout" khớp cả lỗi tải
         return first(INFRA, ev)
     return None
 
