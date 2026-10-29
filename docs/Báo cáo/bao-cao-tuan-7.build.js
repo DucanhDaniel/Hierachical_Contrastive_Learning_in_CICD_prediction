@@ -2,7 +2,7 @@
 const fs = require("fs");
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, ShadingType,
-  HeadingLevel, AlignmentType, LevelFormat, BorderStyle, PageNumber, Footer,
+  HeadingLevel, AlignmentType, LevelFormat, BorderStyle, PageNumber, Footer, ImageRun,
 } = require("docx");
 
 const W = 9638; // A4, lề 2 cm
@@ -41,6 +41,13 @@ function table(head, rows, widths, opts = {}) {
     rows: [new TableRow({ tableHeader: true, children: head.map((h, i) => cell(h, i, true)) }),
       ...rows.map((r, ri) => new TableRow({ children: r.map((c, i) => cell(c, i, false, (opts.hl || []).includes(ri))) }))],
   });
+}
+// ảnh PNG căn giữa, rộng bằng khổ trang; kích thước đọc từ header PNG
+function IMG(file, widthPx = 640) {
+  const data = fs.readFileSync(require("path").join(__dirname, file));
+  const w = data.readUInt32BE(16), h = data.readUInt32BE(20);
+  return new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120 },
+    children: [new ImageRun({ type: "png", data, transformation: { width: widthPx, height: Math.round(widthPx * h / w) } })] });
 }
 const gap = () => new Paragraph({ spacing: { after: 60 }, children: [] });
 
@@ -251,8 +258,18 @@ const body = [
   B("**Dữ liệu:** 61.552 run có nhãn quy tắc phiên bản 2026-10-29b-doc (sau các đợt rà ở mục 4), 13 lá được học. compatibility (44 run) và flaky (16 run) vẫn nằm trong tập test nhưng không mô hình nào dự đoán được."),
   B("**Chia dữ liệu:** 5 fold chéo repo (repo ở tập test không xuất hiện khi train). Mọi mô hình chấm trên **cùng** tập test ở mỗi fold. Chỉ số: macro-F1 ở lá, tầng 2, tầng 1, trung bình 5 fold."),
   B("**Log đầy đủ / log che:** \"che\" là xoá dòng bằng chứng mà quy tắc dùng để gán nhãn, nhằm đo xem mô hình có chỉ học lại quy tắc hay không."),
-  B("**Mô hình đề xuất (v10):** UniXcoder đọc khối log lỗi (512 token), cộng thông tin CI và tóm tắt diff; đầu ra phân cấp 3 tầng. Huấn luyện trên GPU A100 (Colab), khoảng 25 phút mỗi fold. Tuần này v10 được huấn luyện **2 lần với 2 seed khác nhau** (seed 0, seed 1). **Gộp 2 seed** là lấy trung bình xác suất 3 tầng của 2 mô hình rồi giải mã theo cây như một mô hình."),
-  B("**Baseline:** B0 (lớp đông nhất; chỉ tên workflow/job/step), B1 TF-IDF trên log, B2 BERT 512 token cuối log (theo poster ICSE 2024), B3 LLM theo LogSage (ASE 2025). Thêm TF-IDF + đặc trưng có cấu trúc (thông tin CI, rồi thêm tóm tắt diff) để tách đóng góp của đặc trưng khỏi đóng góp của mô hình ngôn ngữ."),
+  B("**Mô hình đề xuất (v10):** UniXcoder đọc khối log lỗi (512 token), cộng thông tin CI và tóm tắt diff; đầu ra phân cấp 3 tầng. Huấn luyện trên GPU A100 (Colab), khoảng 25 phút mỗi fold. Tuần này v10 được huấn luyện **2 lần với 2 seed khác nhau** (seed 0, seed 1). **Gộp 2 seed** là lấy trung bình xác suất 3 tầng của 2 mô hình rồi giải mã theo cây như một mô hình. Cấu trúc ở Hình 1."),
+  IMG("hinh-tuan-7/v10.png"),
+  CAP("Hình 1. Cấu trúc mô hình đề xuất v10."),
+  P("**Baseline** (cấu trúc ở Hình 2):"),
+  B("**B0 lớp đông nhất:** luôn đoán lá có nhiều run nhất trong tập train. Mức sàn, không theo paper."),
+  B("**B0 ngữ cảnh CI:** TF-IDF trên tên workflow / job / step rồi hồi quy logistic, không đọc log. Mức sàn để đo lượng thông tin có sẵn trong metadata CI."),
+  B("**B1 TF-IDF:** TF-IDF (từ đơn và cặp từ) trên 30.000 ký tự cuối log, phân loại bằng hồi quy logistic có cân bằng lớp. Baseline cổ điển của phân loại log, là mức sàn hội đồng yêu cầu, không theo paper cụ thể."),
+  B("**TF-IDF + CI (+ diff):** B1 ghép thêm 22 đặc trưng giai đoạn / công cụ fail (và 11 đặc trưng tóm tắt diff), đúng các đặc trưng v10 dùng. Không phải baseline từ paper; dùng để tách phần đóng góp của đặc trưng khỏi phần đóng góp của mô hình ngôn ngữ."),
+  B("**B2 BERT:** fine-tune BERT-base phân loại phẳng 13 lá trên 512 token cuối log. Theo poster ICSE 2024 \"Applying Transformer Models for Automatic Build Errors Classification of Java-Based Open Source Projects\" (phân loại log lỗi build Gradle của project Java). Khác paper: dữ liệu GitHub Actions và nhãn 13 lá."),
+  B("**B3 LLM:** theo LogSage (ByteDance; arXiv 2506.03691, ASE 2025 Industry Showcase). Bước 1 lọc dòng log khoá: dòng có từ khoá lỗi và 50 dòng cuối, mở rộng thành khối [−4, +6] dòng, lấy theo mật độ đến 40.000 ký tự. Bước 2: LLM (Gemini 3.5 Flash-Lite, zero-shot) đọc log đã lọc, ngữ cảnh CI và định nghĩa 15 lá, trả về 1 lá. Khác paper: bỏ bước so với log của run thành công (dữ liệu chỉ có run fail), đầu ra là 1 lá thay vì báo cáo tự do. Chỉ chạy trên 365 run vì chi phí API."),
+  IMG("hinh-tuan-7/baselines.png"),
+  CAP("Hình 2. Cấu trúc các baseline. B0 lớp đông nhất không vẽ vì không dùng đầu vào."),
 
   H2("5.2. So sánh trên toàn bộ dữ liệu"),
   table(["Mô hình", "Lá", "Tầng 2", "Tầng 1", "Lá (che)", "Tầng 2 (che)", "Tầng 1 (che)"], [
