@@ -23,3 +23,11 @@ MEMORY_WARMUP = 50       # số bước đầu chưa dùng bộ nhớ
 SHARE_L2 = 1e-3          # phạt L2 độ lệch lá khi --share-parent
 SIB_W = 0.4              # trọng số cặp anh em (loss soft)
 PROXY_PARENT_W = 0.3     # trọng số loss nguyên mẫu cha (loss proxy)
+INST_W = 1.0             # trọng số InfoNCE theo run (hai góc nhìn, --views 2), nhân thêm LAMBDA
+# --sib-by-parent: nhánh nhiều lá có log khác nhau (code: compile/test/lint/doc...) kéo anh em nhẹ hơn
+SIB_W_BY_L2 = {"code": 0.2}
+# --hard-neg: cặp lá dễ nhầm (theo F1 từng lá 22/10), mẫu âm thuộc cặp này tính HARD_W lần trong mẫu số
+HARD_PAIRS = [("testfailure", "flaky"), ("testfailure", "itestfailure"), ("crash", "infra"), ("crash", "testfailure"),
+              ("compile", "dependency"), ("network", "dependency"), ("buildconfig", "dependency"), ("quality", "doc"),
+              ("git", "infra"), ("network", "infra")]
+HARD_W = 2.0

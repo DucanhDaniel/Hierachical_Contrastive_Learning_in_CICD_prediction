@@ -117,6 +117,8 @@ def read_ids(path: Path, key: str = "id") -> set:
 
 
 def append(path: Path, rows: list[dict]) -> None:
+    if not rows:
+        return
     with path.open("a", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -168,13 +170,44 @@ def pick_jobs(jobs: list[dict], limit: int) -> list[dict]:
     return fail[:limit] if limit else fail
 
 
+def save_json(path: Path, value) -> None:
+    partial = path.with_suffix(path.suffix + ".part")
+    partial.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
+    partial.replace(path)
+
+
+OVERLAP = timedelta(days=2)
+
+
+def list_start(state: dict, runs_path: Path, since: datetime, wf_ids: list[str], crawled_at: datetime | None) -> dict:
+    """Mốc bắt đầu liệt kê của từng workflow khi crawl cộng dồn: cửa sổ cuối đã liệt kê xong (crawl_state.json).
+    Dữ liệu cũ chưa có state: lần crawl trước đã completed thì mọi workflow đã liệt kê tới lúc đó (crawled_at),
+    nếu không thì lấy created_at mới nhất trong runs.jsonl. Lùi OVERLAP vì API chỉ trả run đã completed: run còn
+    đang chạy ở lần trước sẽ được lấy ở lần này."""
+    marks = {k: datetime.fromisoformat(v) for k, v in state["listed_until"].items()}
+    for k in wf_ids:
+        if k not in marks and crawled_at:
+            marks[k] = crawled_at
+    for line in runs_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            r = json.loads(line)
+            k = str(r["workflow_id"])
+            if k not in state["listed_until"] and not crawled_at:
+                t = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+                marks[k] = max(marks.get(k, t), t)
+    return {k: max(since, t - OVERLAP) for k, t in marks.items()}
+
+
 def crawl_repo(gh: GitHub, repo: str, days: int, max_pages: int, logs: bool, max_logs: int,
                event: str | None = None, branches: list[str] | None = None, root: str = "data/raw",
-               max_jobs_per_run: int = 0, window_days: int = 7) -> None:
+               max_jobs_per_run: int = 0, window_days: int = 7, incremental: bool = False) -> None:
     out = Path(root) / repo.replace("/", "__")
     out.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
     since = now - timedelta(days=days)
+    state_path = out / "crawl_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    state.setdefault("listed_until", {})
 
     wfs = ci_workflows(gh, repo)
     (out / "workflows.json").write_text(json.dumps(
@@ -183,11 +216,18 @@ def crawl_repo(gh: GitHub, repo: str, days: int, max_pages: int, logs: bool, max
 
     # 1) run: từng cửa sổ window_days ngày, ghi ngay sau mỗi cửa sổ để dừng giữa chừng vẫn giữ được
     runs_path = out / "runs.jsonl"
-    runs_path.touch(exist_ok=True)
+    if not runs_path.exists():  # touch() đổi mtime -> bước gán nhãn tưởng có dữ liệu mới
+        runs_path.touch()
     seen = read_ids(runs_path)
+    starts = {}
+    if incremental:
+        st_path = out / "crawl_status.json"  # trạng thái của lần crawl trước (main ghi lại sau khi repo xong)
+        st = json.loads(st_path.read_text(encoding="utf-8")) if st_path.exists() else {}
+        crawled_at = datetime.fromisoformat(st["updated_at"]) if st.get("status") == "completed" else None
+        starts = list_start(state, runs_path, since, [str(w["id"]) for w in wfs], crawled_at)
     for w in wfs:
         new = 0
-        start = since
+        start = starts.get(str(w["id"]), since)
         while start < now:
             end = min(now, start + timedelta(days=window_days))
             batch = [run_row(r) for r in list_runs(gh, repo, w["id"], start, end, event, max_pages)
@@ -195,14 +235,18 @@ def crawl_repo(gh: GitHub, repo: str, days: int, max_pages: int, logs: bool, max
             append(runs_path, batch)
             seen |= {r["id"] for r in batch}
             new += len(batch)
+            # checkpoint sau mỗi cửa sổ: dừng giữa chừng thì lần sau liệt kê tiếp từ đây
+            state["listed_until"][str(w["id"])] = end.isoformat()
+            save_json(state_path, state)
             start = end
-        log(f"  {w['name']}: +{new} run (remaining={gh.remaining})")
+        log(f"  {w['name']}: +{new} run từ {starts.get(str(w['id']), since):%Y-%m-%d} (remaining={gh.remaining})")
 
     # 2) job/step cho run fail
     runs = [json.loads(l) for l in runs_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     failed = [r for r in runs if r["conclusion"] == "failure"]
     jobs_path = out / "jobs.jsonl"
-    jobs_path.touch(exist_ok=True)
+    if not jobs_path.exists():
+        jobs_path.touch()
     done = read_ids(jobs_path, "run_id")
     todo = [r for r in failed if r["id"] not in done]
     log(f"  run fail: {len(failed)}, cần lấy job: {len(todo)}")
@@ -279,6 +323,8 @@ def main() -> None:
     ap.add_argument("--event", help="chỉ lấy run của event này, vd. push, pull_request")
     ap.add_argument("--branches", nargs="*", help="chỉ giữ run trên các nhánh này, vd. master main trunk (chỉ dùng với push)")
     ap.add_argument("--root", default="data/raw", help="thư mục lưu dữ liệu")
+    ap.add_argument("--incremental", action="store_true",
+                    help="chỉ liệt kê run từ mốc đã crawl (crawl_state.json / run mới nhất) trở đi, thay vì cả --days ngày")
     a = ap.parse_args()
     token = load_token()
     if not token:
@@ -292,11 +338,14 @@ def main() -> None:
     gh = GitHub(token)
     for repo in repos:
         with crawl_lock(str(Path(a.root) / repo.replace('/', '__'))):
-            status = {'event': a.event, 'status': 'running', 'started_at': datetime.now(timezone.utc).isoformat()}
             status_path = Path(a.root) / repo.replace('/', '__') / 'crawl_status.json'
+            old = json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {}
+            status = {'event': a.event, 'status': 'running', 'started_at': datetime.now(timezone.utc).isoformat()}
+            if 'scope' in old:  # giữ đánh dấu đợt crawl (vd. targeted-r3)
+                status['scope'] = old['scope']
             try:
                 crawl_repo(gh, repo, a.days, a.max_pages, not a.no_logs, a.max_logs, a.event, a.branches, a.root,
-                           a.max_jobs_per_run, a.window_days)
+                           a.max_jobs_per_run, a.window_days, a.incremental)
                 status['status'] = 'completed'
             except Exception as e:  # một repo lỗi (đổi tên, tắt Actions...) không làm dừng cả lượt crawl
                 status['status'] = 'failed'

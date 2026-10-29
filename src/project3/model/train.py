@@ -2,10 +2,18 @@
 
 Biến thể loss (--variants): `ce` (CE 3 tầng), `hcl` (+ SupCon từng tầng + bộ nhớ), `soft` (+ SupCon cặp dương mềm theo cây:
 cùng lá 1, anh em SIB_W), `proxy` (+ contrastive theo nguyên mẫu phân cấp). Tuỳ chọn:
-  --tfidf          mô hình lai: thêm log xác suất lá của TF-IDF (tfidf_fold{k}.parquet, model.tfidf)
+  --tfidf          KHÔNG thuộc kiến trúc chính (bỏ 27/10/2026: TF-IDF là baseline B1, không gắn với tầng nhãn nào; chỉ bù
+                   cho cách đọc 8 đoạn cuối log cũ). Giữ để chạy dòng phụ "+ TF-IDF": thêm log xác suất lá của TF-IDF
+                   (tfidf_fold{k}.parquet, model.tfidf)
   --sampler mpc    batch = lá x 2 run (bỏ trọng số lớp trong CE)
   --share-parent   trọng số đầu lá = trọng số loại cha + độ lệch (phạt L2)
   --save-repr      lưu attention từng đoạn + z (test) và z của một phần tập train
+  --feats all      đặc trưng có cấu trúc (features.parquet, model.inputs): struct = giai đoạn/công cụ fail, diff = tóm tắt
+                   diff, all = cả hai, none = bỏ (ablation A1/A6)
+  --chunks tail    đọc 8 đoạn cuối log như trước 27/10 (ablation A2); mặc định `error` = khối log quanh chỗ fail
+  --flat           chỉ một đầu phân loại lá, không học tầng 1–2 (ablation A3); tầng 1–2 suy từ lá dự đoán
+  --views 2        mỗi run hai góc nhìn (giữ ngẫu nhiên --view-keep đoạn, che độc lập); CE học cả hai, soft/hcl thêm
+                   InfoNCE coi hai góc nhìn của cùng run là cặp dương
 Che bằng chứng: với xác suất --mask-p, xoá mọi dòng chứa dòng bằng chứng trước khi mã hoá. Chọn epoch theo macro-F1 tầng 2
 trung bình (val nguyên vẹn, val đã che); đánh giá trên test nguyên vẹn và test đã che.
 
@@ -18,6 +26,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +34,7 @@ import pandas as pd
 
 from . import config as C
 from .data import fold_split, load_pack
+from .inputs import focus_window
 from .labels import LabelTree
 from .metrics import hier_scores
 from .text import ci_context, clip_chunk, mask_text
@@ -40,6 +50,8 @@ class Fold:
     va: np.ndarray
     te: np.ndarray
     tfidf: dict = None  # {False: mảng log nguyên vẹn, True: mảng log đã che}, cùng thứ tự với runs
+    feats: dict = None  # đặc trưng có cấu trúc đã chuẩn hoá, cùng dạng với tfidf
+    clip: object = clip_chunk  # cắt đoạn trước khi mã hoá: focus_window (khối lỗi) | clip_chunk (cuối đoạn)
 
     def __post_init__(self):
         r = self.runs
@@ -49,13 +61,17 @@ class Fold:
                     zip(r.workflow.fillna(""), r.failed_job_names.fillna(""), r.failed_steps.fillna(""))]
         self.leaf = r.leaf.values
 
-    def inputs(self, rows, masked):
+    def inputs(self, rows, masked, drop=None):
         """Đầu vào của mạng cho các run `rows` (masked[k]: che bằng chứng run thứ k).
+        drop = (rng, tỉ lệ giữ): bỏ ngẫu nhiên đoạn khi tạo góc nhìn (--views 2); mỗi job giữ ít nhất đoạn cuối.
         Trả về (texts, c2j, j2r, pos), pos[i] = (run trong batch, job, đoạn) của đoạn i."""
         texts, c2j, j2r, pos = [], [], [], []
         for k, (r, mk) in enumerate(zip(rows, masked)):
             for ji, job in enumerate(self.chunks[self.run_id[r]]):
-                parts = [(ci, clip_chunk(mask_text(t, self.keys[r]) if mk else t)) for ci, t in enumerate(job)]
+                idx = range(len(job))
+                if drop is not None and len(job) > 1:
+                    idx = [ci for ci in idx if drop[0].random() < drop[1]] or [len(job) - 1]
+                parts = [(ci, self.clip(mask_text(job[ci], self.keys[r]) if mk else job[ci])) for ci in idx]
                 parts = [(ci, p) for ci, p in parts if p.strip()] or [(-1, "(trống)")]
                 j2r.append(k)
                 for ci, p in parts:
@@ -72,10 +88,23 @@ def load_tfidf(path: Path, runs: pd.DataFrame) -> dict:
     return {False: np.stack(tf.full.values).astype(np.float32), True: np.stack(tf.masked.values).astype(np.float32)}
 
 
+def load_feats(path: Path, runs: pd.DataFrame, which: str, tr: np.ndarray) -> dict:
+    """Đặc trưng có cấu trúc theo thứ tự runs, chuẩn hoá theo trung bình / độ lệch của tập train.
+    which: struct | diff | all. Bản che dùng struct tính trên log đã che (diff không phụ thuộc che)."""
+    f = pd.read_parquet(path).drop_duplicates("run_id").set_index("run_id").reindex(runs.run_id)
+    assert not f["diff"].isna().any(), "thiếu đặc trưng cho một số run"
+    out = {}
+    for m, col in ((False, "struct_full"), (True, "struct_masked")):
+        parts = ([np.stack(f[col].values)] if which in ("struct", "all") else []) +                 ([np.stack(f["diff"].values)] if which in ("diff", "all") else [])
+        out[m] = np.concatenate(parts, 1).astype(np.float32)
+    mu, sd = out[False][tr].mean(0), out[False][tr].std(0) + 1e-6
+    return {m: ((x - mu) / sd).astype(np.float32) for m, x in out.items()}
+
+
 def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict:
     import torch
     import torch.nn.functional as F
-    from .nn.losses import MemoryBank, class_weights, hcl_loss, proxy_loss, soft_supcon_mem
+    from .nn.losses import MemoryBank, class_weights, hcl_loss, instance_nce, proxy_loss, soft_supcon_mem
     from .nn.net import LogNet, decode
     from .nn.samplers import MPCSampler, random_batches
 
@@ -83,15 +112,17 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     tree, runs, tr, va, te = fold.tree, fold.runs, fold.tr, fold.va, fold.te
-    y1 = torch.tensor([tree.l1.index(tree.group[l]) for l in runs.label_l2], device=dev)
-    y2 = torch.tensor([tree.l2.index(l) for l in runs.label_l2], device=dev)
+    l2 = [tree.tier2(l) for l in runs.leaf]  # tầng 2 suy từ lá theo cây (không dùng label_l2 của quy tắc)
+    y1 = torch.tensor([tree.l1.index(tree.group[l]) for l in l2], device=dev)
+    y2 = torch.tensor([tree.l2.index(l) for l in l2], device=dev)
     y3 = torch.tensor([tree.l3.index(l) if l in tree.l3 else -1 for l in runs.leaf], device=dev)
     w1, w2, w3 = (class_weights(y, tr, len(L)) for y, L in ((y1, tree.l1), (y2, tree.l2), (y3, tree.l3)))
     if a.sampler == "mpc":  # sampler đã cân bằng lớp, không bù thêm bằng trọng số
         w1, w2, w3 = None, None, None
 
     net = LogNet(tree, dev, freeze_layers=a.freeze_layers, tfidf_dim=fold.tfidf[False].shape[1] if fold.tfidf else 0,
-                 share_parent=a.share_parent, proxy=variant == "proxy").to(dev)
+                 share_parent=a.share_parent, proxy=variant == "proxy",
+                 feat_dim=fold.feats[False].shape[1] if fold.feats else 0).to(dev)
     enc_params = [p for p in net.enc.parameters() if p.requires_grad]
     head_params = [p for n, p in net.named_parameters() if not n.startswith("enc.")]
     opt = torch.optim.AdamW([{"params": enc_params, "lr": a.lr_enc}, {"params": head_params, "lr": 1e-3}],
@@ -99,10 +130,11 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     autocast = lambda: torch.autocast(dev, dtype=torch.float16, enabled=dev == "cuda")
 
-    def forward(rows, masked, keep=False):
-        texts, c2j, j2r, pos = fold.inputs(rows, masked)
+    def forward(rows, masked, keep=False, drop=None):
+        texts, c2j, j2r, pos = fold.inputs(rows, masked, drop)
         tf = np.stack([fold.tfidf[bool(m)][x] for x, m in zip(rows, masked)]) if fold.tfidf else None
-        out = net(texts, c2j, j2r, len(rows), [fold.ctx[x] for x in rows], tf, max_tokens=a.max_tokens, keep=keep)
+        ft = np.stack([fold.feats[bool(m)][x] for x, m in zip(rows, masked)]) if fold.feats else None
+        out = net(texts, c2j, j2r, len(rows), [fold.ctx[x] for x in rows], tf, max_tokens=a.max_tokens, keep=keep, ft=ft)
         return out, pos
 
     def predict(rows, masked, keep=False):
@@ -113,7 +145,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
             for i in range(0, len(rows), a.eval_batch):
                 b = rows[i:i + a.eval_batch]
                 (o1, o2, o3, _, extra), pos = forward(b, [masked] * len(b), keep)
-                p, lp = decode(o1, o2, o3, tree)
+                p, lp = decode(o1, o2, o3, tree, flat=a.flat)
                 preds += p
                 lps.append(lp)
                 if keep:  # trọng số đoạn trong cả run = trọng số trong job x trọng số job
@@ -131,27 +163,38 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
         feat = feat.float()
         mfeat, mlab = memory.get(step, C.MEMORY_WARMUP)
         loss = (hcl_loss(feat, lab, mfeat, mlab, C.TAU) if variant == "hcl"
-                else soft_supcon_mem(feat, lab, mfeat, mlab, C.TAU, C.SIB_W))
+                else soft_supcon_mem(feat, lab, mfeat, mlab, C.TAU, sib_w, hard, C.HARD_W))
         memory.push(feat, lab)
         return loss
 
     sampler = MPCSampler(tr, fold.leaf) if a.sampler == "mpc" else None
-    memory = MemoryBank(C.MEMORY, 64, 3, dev)
+    memory = MemoryBank(a.memory, 64, 3, dev)
+    sib_w = (torch.tensor([C.SIB_W_BY_L2.get(c, C.SIB_W) for c in tree.l2], device=dev) if a.sib_by_parent else C.SIB_W)
+    hard = None
+    if a.hard_neg:
+        hard = torch.zeros(len(tree.l3), len(tree.l3), dtype=torch.bool, device=dev)
+        for x, y in C.HARD_PAIRS:
+            if x in tree.l3 and y in tree.l3:
+                hard[tree.l3.index(x), tree.l3.index(y)] = hard[tree.l3.index(y), tree.l3.index(x)] = True
     best, best_state, t0, step = -1.0, None, time.time(), 0
     va_eval = va[: a.val_max]
     for ep in range(a.epochs):
         net.train()
         for b in (sampler(rng, a.batch) if sampler else random_batches(rng, tr, a.batch)):
+            b = list(b) * a.views  # --views 2: mỗi run hai góc nhìn (đoạn giữ ngẫu nhiên + che độc lập), CE học cả hai
             mk = (rng.random(len(b)) < a.mask_p).tolist()
             with autocast():
-                (o1, o2, o3, feat, _), _ = forward(b, mk)
+                (o1, o2, o3, feat, _), _ = forward(b, mk, drop=(rng, a.view_keep) if a.views > 1 else None)
             bt = torch.tensor(b, device=dev)
-            loss = (F.cross_entropy(o1.float(), y1[bt], weight=w1) + F.cross_entropy(o2.float(), y2[bt], weight=w2)
-                    + F.cross_entropy(o3.float(), y3[bt], weight=w3, ignore_index=-1))
+            loss = F.cross_entropy(o3.float(), y3[bt], weight=w3, ignore_index=-1)
+            if not a.flat:
+                loss = loss + F.cross_entropy(o1.float(), y1[bt], weight=w1) + F.cross_entropy(o2.float(), y2[bt], weight=w2)
             if a.share_parent:
                 loss = loss + C.SHARE_L2 * net.h3.weight.float().pow(2).sum()
             if variant != "ce":
                 loss = loss + C.LAMBDA * contrastive(feat, bt, step)
+                if a.views > 1:  # cặp dương = hai góc nhìn của cùng run (thông tin CE không có)
+                    loss = loss + C.LAMBDA * C.INST_W * instance_nce(feat.float(), a.views, C.TAU)
             opt.zero_grad()
             scaler.scale(loss).backward()
             scaler.step(opt)
@@ -191,7 +234,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
 
 
 def main(a) -> None:
-    runs, chunks, tree = load_pack(a.data)
+    runs, chunks, tree = load_pack(a.data, "chunks_tail.parquet" if a.chunks == "tail" else "chunks.parquet")
     if a.smoke:
         idx = np.concatenate([np.random.default_rng(0).permutation(np.where(runs.repo_fold.values == k)[0])[:60]
                               for k in range(C.N_FOLDS)])
@@ -199,7 +242,8 @@ def main(a) -> None:
     tr, va, te = fold_split(runs.repo_fold.values, a.fold)
     va = np.random.default_rng(0).permutation(va)
     tfidf = load_tfidf((a.tfidf_dir or a.data) / f"tfidf_fold{a.fold}.parquet", runs) if a.tfidf else None
-    fold = Fold(runs, chunks, tree, tr, va, te, tfidf)
+    feats = load_feats(a.data / "features.parquet", runs, a.feats, tr) if a.feats != "none" else None
+    fold = Fold(runs, chunks, tree, tr, va, te, tfidf, feats, partial(focus_window, n=a.window) if a.chunks == "error" else clip_chunk)
     print(f"fold {a.fold}: train {len(tr)}, val {len(va)} (dùng {min(len(va), a.val_max)}), test {len(te)} run", flush=True)
     results, preds = {"args": {k: str(v) for k, v in vars(a).items()}, "tree": tree.to_dict()}, []
     for variant in a.variants:
@@ -228,8 +272,19 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-steps", type=int, default=0)
     ap.add_argument("--smoke", action="store_true", help="60 run mỗi fold, để thử nhanh")
     ap.add_argument("--tfidf", action="store_true", help="biến thể lai: thêm xác suất TF-IDF (tfidf_fold{k}.parquet)")
+    ap.add_argument("--feats", choices=["all", "struct", "diff", "none"], default="all",
+                    help="đặc trưng có cấu trúc: giai đoạn/công cụ fail (struct), tóm tắt diff (diff)")
+    ap.add_argument("--chunks", choices=["error", "tail"], default="error", help="khối log lỗi | 8 đoạn cuối log (cũ)")
+    ap.add_argument("--window", type=int, default=1600, help="số ký tự cửa sổ quanh dòng lỗi (--chunks error); "
+                    "dùng với --max-tokens 512")
+    ap.add_argument("--flat", action="store_true", help="chỉ đầu lá (ablation bỏ phân cấp)")
     ap.add_argument("--sampler", choices=["random", "mpc"], default="random", help="mpc: batch = lá x 2 run")
     ap.add_argument("--share-parent", action="store_true", help="trọng số lá = trọng số loại cha + độ lệch")
+    ap.add_argument("--views", type=int, default=1, choices=[1, 2], help="2: mỗi run hai góc nhìn; soft/hcl thêm InfoNCE theo run")
+    ap.add_argument("--view-keep", type=float, default=0.75, help="tỉ lệ giữ mỗi đoạn khi tạo góc nhìn")
+    ap.add_argument("--memory", type=int, default=512, help="kích thước bộ nhớ đặc trưng của loss so sánh")
+    ap.add_argument("--sib-by-parent", action="store_true", help="trọng số anh em theo nhánh (config.SIB_W_BY_L2)")
+    ap.add_argument("--hard-neg", action="store_true", help="phạt mạnh cặp lá dễ nhầm (config.HARD_PAIRS)")
     ap.add_argument("--save-repr", action="store_true", help="lưu attention từng đoạn + z (test) và z của tập train")
     ap.add_argument("--repr-train", type=int, default=10000, help="số run train lưu z")
     ap.add_argument("--tfidf-dir", type=Path, default=None, help="thư mục tfidf_fold{k}.parquet (mặc định --data)")

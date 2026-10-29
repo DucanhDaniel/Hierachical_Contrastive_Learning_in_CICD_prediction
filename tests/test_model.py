@@ -36,6 +36,31 @@ class LabelTreeTest(unittest.TestCase):
         self.assertEqual(t.l3, ["javac"])
         self.assertEqual(t.parent["rare"], "test")
         self.assertEqual(t.extra["dropped_leaves"], {"rare": 3})
+        self.assertEqual(t.l1, ["build", "test"])
+
+    def test_cause_tree(self):
+        from project3.crawl.build_log_labels import GROUP as RULE_GROUP
+        from project3.crawl.fine_labels import PARENT as RULE_PARENT
+        from project3.model.labels import CAUSE_GROUP as GROUP, CAUSE_PARENT as PARENT, RULE_L2
+        self.assertEqual(set(RULE_L2), set(RULE_GROUP))
+        self.assertEqual(set(PARENT.values()) | set(RULE_L2.values()), set(GROUP))
+        self.assertTrue(set(llm.LEAVES) <= set(PARENT))
+        for leaf, old in {**RULE_PARENT, "infra": "infra"}.items():  # lá đi qua loại cũ hay đi thẳng phải ra cùng cha
+            self.assertEqual(RULE_L2[old], PARENT[leaf], leaf)
+        children = {c: [l for l, p in PARENT.items() if p == c] for c in GROUP}
+        self.assertTrue(all(len(v) >= 2 for c, v in children.items() if c != "flaky"))  # chỉ flaky là lá ở tầng 2
+
+    def test_artifact_tree(self):
+        from project3.crawl.fine_labels import PARENT as RULE_PARENT
+        from project3.model.labels import CAUSE_PARENT, GROUP, PARENT
+        self.assertEqual(set(PARENT), set(CAUSE_PARENT))  # cùng 15 lá với cây cũ
+        self.assertTrue(set(RULE_PARENT) <= set(PARENT))
+        self.assertEqual(set(PARENT.values()), set(GROUP))
+        for node, kids in [*((c, [l for l, p in PARENT.items() if p == c]) for c in GROUP),
+                           *((g, [c for c, p in GROUP.items() if p == g]) for g in set(GROUP.values()))]:
+            self.assertGreaterEqual(len(kids), 2, node)  # mỗi cha ≥ 2 con
+        self.assertEqual({l for l, p in PARENT.items() if GROUP[p] == "moi_truong"},
+                         {"git", "androidsdk", "infra", "network", "crash"})
 
 
 class MetricsTest(unittest.TestCase):
@@ -122,7 +147,11 @@ class PackagingTest(unittest.TestCase):
             finally:
                 kaggle.OUT = old
             text = (k / "run.py").read_text(encoding="utf-8")
-            self.assertIn('CONFIG = {"folds": [1], "variants": ["soft"], "budget_h": 5.0, "extra": ["--tfidf"]}', text)
+            line = next(l for l in text.splitlines() if l.startswith("CONFIG = "))
+            ns = {}
+            exec(line, ns)  # CONFIG phải là Python hợp lệ (27/10: json.dumps ghi `true` làm kernel lỗi)
+            self.assertEqual(ns["CONFIG"], {"folds": [1], "variants": ["soft"], "budget_h": 5.0, "extra": ["--tfidf"],
+                                            "smoke": [[]], "smoke_only": False})
             ast.parse(text)
 
     def test_llm_task_leaves_match(self):

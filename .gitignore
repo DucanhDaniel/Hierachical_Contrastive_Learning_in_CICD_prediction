@@ -19,3 +19,6 @@ data/
 # Cache / tạm
 .pytest_cache/
 /tmp*/
+recording/
+data/kaggle_audio_ds/
+data/transcripts/

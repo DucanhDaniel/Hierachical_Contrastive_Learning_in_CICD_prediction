@@ -31,16 +31,15 @@ from .tfidf import make_classifier, make_vectorizer
 
 
 def label_maps():
-    """(parent, group) của bộ quy tắc hiện hành: lá -> loại tầng 2, loại tầng 2 -> nhóm tầng 1."""
-    from project3.crawl.build_log_labels import GROUP
-    from project3.crawl.fine_labels import PARENT
+    """(parent, group) của cây nhãn: lá -> loại tầng 2, loại tầng 2 -> nhóm tầng 1."""
+    from .labels import GROUP, PARENT
     return PARENT, GROUP
 
 
 def rule_one(args):
+    from project3.crawl.build_log_labels import GROUP as group
     from project3.crawl.fine_labels import subtype
     from project3.crawl.gold_labels import gold_label
-    _, group = label_maps()
     run_id, texts, key, workflow, names = args
     out = {}
     for name, ts in (("full", texts), ("masked", [mask_text(t, key) for t in texts])):
@@ -151,11 +150,38 @@ def run_fair() -> None:
     print((OUT / "fair.md").read_text(encoding="utf-8"))
 
 
+def rescore() -> None:
+    """Chấm lại dự đoán lá đã có (preds.parquet của `all` + TF-IDF A trong tfidf_fold*.parquet) theo cây hiện hành,
+    trung bình 5 fold chéo repo -> rescore.json / rescore.md. Không huấn luyện lại (lá không đổi khi đổi cây)."""
+    parent, group = label_maps()
+    runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
+    classes = sorted(runs.leaf.unique())  # cùng thứ tự cột như model.tfidf
+    P = pd.read_parquet(OUT / "preds.parquet")
+    P = P[P.split.str.startswith("repo_fold")].assign(fold=lambda d: d.split.str[-1].astype(int))
+    parts = [P[["model", "test", "fold", "run_id", "pred", "leaf"]]]
+    for k in range(5):
+        f = pd.read_parquet(PACK / f"tfidf_fold{k}.parquet").drop_duplicates("run_id").set_index("run_id")
+        te = runs.index[runs.repo_fold == k]
+        for t in ("full", "masked"):
+            parts.append(pd.DataFrame({"model": "tfidf_A", "test": t, "fold": k, "run_id": te, "leaf": runs.leaf[te].values,
+                                       "pred": [classes[int(np.argmax(f[t][r]))] for r in te]}))
+    rows = [{"model": m, "test": t, "fold": k, **{lv: s[f"macroF1_{lv}"] for lv in ("l3", "l2", "l1")}}
+            for (m, t, k), g in pd.concat(parts).groupby(["model", "test", "fold"])
+            for s in [hier_scores(g.leaf.tolist(), g.pred.tolist(), parent, group)]]
+    df = pd.DataFrame(rows)
+    mean = df.groupby(["model", "test"])[["l3", "l2", "l1"]].mean().round(3)
+    (OUT / "rescore.json").write_text(df.to_json(orient="records", force_ascii=False, indent=1), encoding="utf-8")
+    (OUT / "rescore.md").write_text("macro-F1 theo cây hiện hành (TB 5 fold chéo repo)\n\n" + mean.to_string() + "\n",
+                                    encoding="utf-8")
+    print(mean.to_string())
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("all").add_argument("--workers", type=int, default=8)
     sub.add_parser("fair")
+    sub.add_parser("rescore")
     a = ap.parse_args()
-    run_all(a.workers) if a.cmd == "all" else run_fair()
+    {"all": lambda: run_all(a.workers), "fair": run_fair, "rescore": rescore}[a.cmd]()

@@ -10,12 +10,12 @@ from .config import N_FOLDS, RUN_DATASET, SEED
 from .labels import LabelTree, leaf_of
 
 
-def load_pack(data: Path):
+def load_pack(data: Path, chunks_file: str = "chunks.parquet"):
     """Gói dữ liệu của model.pack -> (runs, chunks, tree). chunks[run_id] = [[đoạn của job 1], [đoạn của job 2], ...],
-    job theo job_id tăng dần, đoạn theo chunk_idx."""
+    job theo job_id tăng dần, đoạn theo chunk_idx. chunks_file: chunks.parquet (khối lỗi) | chunks_tail.parquet (cũ)."""
     data = Path(data)
     runs = pd.read_parquet(data / "runs.parquet")
-    ch = pd.read_parquet(data / "chunks.parquet").sort_values(["run_id", "job_id", "chunk_idx"])
+    ch = pd.read_parquet(data / chunks_file).sort_values(["run_id", "job_id", "chunk_idx"])
     chunks = {}
     for (rid, jid), g in ch.groupby(["run_id", "job_id"], sort=False):
         chunks.setdefault(rid, []).append(g.text.tolist())
@@ -66,6 +66,7 @@ def load_run_logs(ds: Path = RUN_DATASET):
     runs = duckdb.sql(f"""SELECT run_id, repository, workflow, failed_job_names, label_l2, label_l3, evidence,
                                  repo_fold, split_time FROM '{Path(ds) / "runs.parquet"}'
                           WHERE label_l2 IN ({",".join(repr(k) for k in GROUP)}) AND log_jobs > 0""").df()
+    duckdb.register("runs", runs)  # duckdb mới không tự tìm DataFrame ở frame của hàm gọi (job_texts)
     jobs = job_texts("run_id IN (SELECT run_id FROM runs)", ds)
     runs["leaf"] = [leaf_of(a, b) for a, b in zip(runs.label_l3, runs.label_l2)]
     runs["key"] = [clean(e)[:120].strip() for e in runs.evidence.fillna("")]

@@ -1,0 +1,13 @@
+{
+  "id": "ducanhpham2k5/p3-transcribe",
+  "title": "p3-transcribe",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": ["ducanhpham2k5/p3-audio-1023"],
+  "competition_sources": [],
+  "kernel_sources": []
+}

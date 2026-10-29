@@ -26,7 +26,8 @@ import pandas as pd
 
 from project3.crawl.build_log_labels import GROUP
 from project3.crawl.gold_labels import AGG_JOB, RULE_VERSION
-from project3.crawl.fine_labels import subtype
+from project3.crawl.fine_labels import PARENT as FINE_PARENT, subtype
+from project3.crawl.stages import failed_tools
 
 ROOTS = {"data/crawl_pr": "pull_request", "data/validate": "push"}
 OUT = Path("data/run_dataset")
@@ -112,14 +113,15 @@ def process_repo(args) -> tuple[list[dict], list[dict]]:
         failed = [j for j in row["jobs"] if j["conclusion"] == "failure" and not AGG_JOB.search(j["name"])]
         names = " ".join(j["name"] for j in failed)
         gold, ev = lab["gold"], lab["evidence"]
-        leaf = subtype(gold, ev, run["name"] or "", names) if gold in GROUP else None
-        n_chunks, sources = 0, Counter()
+        n_chunks, sources, tools, texts = 0, Counter(), [], []
         ev_key = clean(ev)[:120].strip()
         for j in failed:
             text, src = read_log(d, j["id"])
             if text is None:
                 continue
             sources[src] += 1
+            tools += failed_tools(text)
+            texts.append(text)
             fsteps = [s["name"] for s in j.get("steps", []) if s["conclusion"] == "failure"]
             for k, c in enumerate(chunk_log(text)):
                 chunks.append({"run_id": row["run_id"], "job_id": j["id"], "job_name": j["name"][:200],
@@ -127,6 +129,13 @@ def process_repo(args) -> tuple[list[dict], list[dict]]:
                                "kind": c["kind"], "step_header": c["step"], "text": c["text"],
                                "has_evidence": bool(ev_key) and ev_key in c["text"], "source": src})
                 n_chunks += 1
+        leaf = None
+        if gold in GROUP:
+            # test/itest theo công cụ fail sớm nhất trong nhóm test (26/10, kiểm chứng 161 run)
+            test_stage = next((st for _, st in tools if st in ("test", "itest")), None)
+            leaf = subtype(gold, ev, run["name"] or "", names, "\n".join(texts), test_stage)
+            if leaf in FINE_PARENT and FINE_PARENT[leaf] != gold:  # lá đổi nhánh (compile -> quality...): theo lá
+                gold = FINE_PARENT[leaf]
         rows.append({"repository": lab["repo"], "run_id": row["run_id"], "event": ROOTS[root], "workflow": run["name"],
                      "head_sha": run["head_sha"], "head_branch": run.get("head_branch"),
                      "created_at": run.get("created_at"), "run_attempt": run.get("run_attempt"),
@@ -137,7 +146,7 @@ def process_repo(args) -> tuple[list[dict], list[dict]]:
     return rows, chunks
 
 
-def main(out: Path, workers: int) -> None:
+def main(out: Path, workers: int, dataset: Path = Path("data/dataset")) -> None:
     out.mkdir(parents=True, exist_ok=True)
     tasks, seen = [], set()
     for root in ROOTS:
@@ -176,7 +185,7 @@ def main(out: Path, workers: int) -> None:
     runs = con.sql("""
         SELECT r.*, c.diff_path, coalesce(c.diff_ok, false) diff_ok, c.repo_fold, c.split_time, c.label_l2 commit_label_l2,
                c.first_failure
-        FROM runs r LEFT JOIN (SELECT * FROM 'data/dataset/commits.parquet'
+        FROM runs r LEFT JOIN (SELECT * FROM '""" + (dataset / "commits.parquet").as_posix() + """'
                                QUALIFY row_number() OVER (PARTITION BY repository, event, head_sha ORDER BY seq_idx) = 1) c
           ON c.repository = r.repository AND c.event = r.event AND c.head_sha = r.head_sha""").df()
     runs.to_parquet(out / "runs.parquet", index=False, compression="zstd")
@@ -202,5 +211,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--dataset", type=Path, default=Path("data/dataset"), help="thư mục commits.parquet (export_dataset)")
     a = ap.parse_args()
-    main(a.out, a.workers)
+    main(a.out, a.workers, a.dataset)

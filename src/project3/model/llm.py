@@ -21,7 +21,7 @@ from sklearn.metrics import f1_score
 
 from .config import BASELINE_OUT, HUMAN_LABELS, LLM_OUT as OUT, LOG_MODEL_OUT, PACK, RUN_DATASET
 from .data import job_texts
-from .labels import LabelTree
+from .labels import RULE_L2, LabelTree
 from .text import mask_text
 
 MAX_CHARS, PER_LEAF, SEED = 12_000, 25, 20261020
@@ -29,7 +29,7 @@ MAX_CHARS, PER_LEAF, SEED = 12_000, 25, 20261020
 LEAVES = ["testfailure", "itestfailure", "compile", "buildconfig", "dependency", "quality", "doc", "license",
           "compatibility", "git", "crash", "androidsdk", "network", "flaky", "infra"]
 # mô hình so cùng LLM trên tập model: (tên, thư mục trong LOG_MODEL_OUT, biến thể)
-COMPARE = (("lai CE", "v3_tfidf", "ce"), ("lai + sampler HCL", "v4_rare", "hcl"))
+COMPARE = (("CE cây cũ", "v4_rare", "ce"), ("CE cây mới", "v8_cause", "ce"), ("soft cây mới", "v8_cause", "soft"))
 
 
 def run_texts(run_ids) -> dict:
@@ -108,7 +108,7 @@ def score(d: Path) -> None:
     import duckdb
     s = pd.read_parquet(OUT / "sample.parquet")
     tree = LabelTree.load(PACK / "label_tree.json")
-    par = {**tree.parent, "infra": "infra", "unknown": "unknown"}
+    par = {**tree.parent, "unknown": "unknown"}
     pred = {}
     for f in d.rglob("*.run.json"):
         j = json.loads(f.read_text(encoding="utf-8"))
@@ -125,8 +125,10 @@ def score(d: Path) -> None:
     h = s[s["set"] == "human"]
     rule = duckdb.sql(f"SELECT run_id, coalesce(label_l2, '?') l2 FROM '{RUN_DATASET / 'runs.parquet'}' "
                       f"WHERE run_id IN ({','.join(map(str, h.run_id))})").df().drop_duplicates("run_id").set_index("run_id").l2
-    for name, p2 in (("LLM", [par.get(x, x) for x in h.llm]), ("quy tắc", h.run_id.map(rule).fillna("?").tolist())):
-        y = h.gold_l2.tolist()
+    # nhãn người và quy tắc là loại tầng 2 của bộ quy tắc -> đổi sang tầng 2 của cây
+    for name, p2 in (("LLM", [par.get(x, x) for x in h.llm]),
+                     ("quy tắc", [RULE_L2.get(x, "?") for x in h.run_id.map(rule).fillna("?")])):
+        y = [RULE_L2[x] for x in h.gold_l2]
         out.append({"tập": "người gán (tầng 2)", "test": "full", "mô hình": name, "n": len(y),
                     "acc_t2": np.mean(np.array(y) == np.array(p2)),
                     "F1_t2": f1_score(y, p2, labels=sorted(set(y)), average="macro", zero_division=0)})

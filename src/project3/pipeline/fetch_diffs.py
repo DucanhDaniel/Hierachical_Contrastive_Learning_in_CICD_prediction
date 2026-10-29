@@ -103,17 +103,32 @@ def remove_clone(repo_dir: Path) -> None:
     shutil.rmtree(repo_dir, onexc=lambda f, path, _: (os.chmod(path, stat.S_IWRITE), f(path)))
 
 
+def known(index: Path | None) -> set:
+    """(repo, sha, kind) đã có dòng trong chỉ mục (kể cả lỗi như commit bị force-push): không thử lại."""
+    if not index or not index.exists():
+        return set()
+    with open(index, encoding="utf-8") as f:
+        return {(r["repository"], r["head_sha"], r["kind"]) for r in csv.DictReader(f)}
+
+
 def main(table: Path, repos: list[str], clones: Path, diffs: Path, out: Path, workers: int, unlabeled: bool,
-         cleanup: bool = False) -> None:
+         cleanup: bool = False, all_fail: bool = False, skip_index: list[Path] = ()) -> None:
     con = duckdb.connect()
-    keep = "outcome = 'pass' OR cause = 'code'" + (" OR (outcome = 'fail' AND cause = '?')" if unlabeled else "")
+    if all_fail:
+        keep = "outcome = 'pass' OR outcome = 'fail'"
+    else:
+        keep = "outcome = 'pass' OR cause = 'code'" + (" OR (outcome = 'fail' AND cause = '?')" if unlabeled else "")
     rows = con.sql(f"""SELECT DISTINCT repository, event, head_sha FROM '{table.as_posix()}'
         WHERE repository IN ({','.join(f"'{r}'" for r in repos)}) AND ({keep})""").fetchall()
-    print(f"{len(rows)} commit")
+    done = set().union(*(known(p) for p in skip_index))
+    rows = [(r, ev, sha) for r, ev, sha in rows if (r, sha, "pr" if ev == "pull_request" else "commit") not in done]
+    print(f"{len(rows)} commit cần diff", flush=True)
     result = []
     for repo in repos:
         repo_dir = clones / repo.split("/")[1]
         mine = [(sha, ev) for r, ev, sha in rows if r == repo]
+        if not mine:
+            continue
         prepare(repo, repo_dir)
         fetch_missing(repo_dir, sorted({s for s, _ in mine}))
         d = diffs / repo.replace("/", "__")
@@ -126,13 +141,16 @@ def main(table: Path, repos: list[str], clones: Path, diffs: Path, out: Path, wo
             git(repo_dir, "repack", "-a", "-d", "-q", timeout=1800)
             print(f"  {repo}: {min(k + REPACK_EVERY, len(mine))}/{len(mine)}", flush=True)
         print(f"  {repo}: ok {sum(r['ok'] for r in result if r['repository'] == repo)}/{len(mine)}", flush=True)
+        # ghi chỉ mục sau từng repo (nối thêm): dừng giữa chừng thì repo đã xong không phải làm lại
+        new = not out.exists()
+        with open(out, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, ["repository", "head_sha", "kind", "path", "ok", "err"])
+            if new:
+                w.writeheader()
+            w.writerows(r for r in result if r["repository"] == repo)
         if cleanup:  # diff đã lưu (nén); clone chỉ cần lúc tính diff, xoá để đĩa chỉ chứa một clone tại một thời điểm
             remove_clone(repo_dir)
-    with open(out, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, list(result[0]))
-        w.writeheader()
-        w.writerows(result)
-    print(f"Đã lưu {out}")
+    print(f"Đã lưu {out} ({len(result)} dòng mới)")
 
 
 if __name__ == "__main__":
@@ -146,5 +164,9 @@ if __name__ == "__main__":
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--cleanup", action="store_true", help="xoá clone của mỗi repo sau khi lấy xong diff")
     ap.add_argument("--include-unlabeled", action="store_true", help="lấy cả commit fail chưa gán nhãn (cause = '?')")
+    ap.add_argument("--all-fail", action="store_true", help="lấy diff cho mọi commit fail (kể cả ? và env), như kaggle_diff")
+    ap.add_argument("--skip-index", nargs="*", type=Path, default=[],
+                    help="chỉ mục diff đã có (vd. diffs_all.csv): commit có dòng ở đây được bỏ qua")
     a = ap.parse_args()
-    main(Path(a.table), a.repos, Path(a.clones), Path(a.diffs), Path(a.out), a.workers, a.include_unlabeled, a.cleanup)
+    main(Path(a.table), a.repos, Path(a.clones), Path(a.diffs), Path(a.out), a.workers, a.include_unlabeled, a.cleanup,
+         a.all_fail, a.skip_index)
