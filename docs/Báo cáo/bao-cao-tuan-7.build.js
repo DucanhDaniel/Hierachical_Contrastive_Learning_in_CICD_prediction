@@ -50,11 +50,11 @@ const CNT = {"testfailure": "19.553", "compile": "12.083", "itestfailure": "9.16
 const body = [
   new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun("BÁO CÁO TUẦN 7")] }),
   P("Đề tài: Phân loại nguyên nhân lỗi build CI/CD theo cây nhãn phân cấp"),
-  P("Thời gian: thứ Năm 22/10/2026 – thứ Tư 28/10/2026"),
+  P("Thời gian: thứ Năm 22/10/2026 – thứ Năm 29/10/2026"),
 
   H1("0. Tóm tắt"),
   B("**Cây nhãn 3 tầng theo góp ý của cô:** tầng 1 là artifact chứa lỗi (Dự án / Môi trường CI), tầng 2 là thời điểm cần sửa (5 nhóm), tầng 3 là loại lỗi (15 lá: 13 lá theo Rausch et al. và 2 lá thêm)."),
-  B("**Crawl có chọn lọc thay cho crawl ngẫu nhiên:** 2 đợt chạy trên Kaggle. Đợt 3 nhắm các workflow có lá hiếm (19 repo), đợt Android nhắm lỗi môi trường theo góp ý của cô (59 repo). Tổng dữ liệu: **278 repo, 124.708 run fail, 61.602 run có nhãn quy tắc và có log**."),
+  B("**Crawl có chọn lọc thay cho crawl ngẫu nhiên:** 2 đợt chạy trên Kaggle. Đợt 3 nhắm các workflow có lá hiếm (19 repo), đợt Android nhắm lỗi môi trường theo góp ý của cô (59 repo). Tổng dữ liệu: **278 repo, 124.708 run fail, 61.602 run có nhãn quy tắc và có log** (61.552 run sau các đợt rà nhãn ở mục 4)."),
   B("**Kết quả crawl:** buildconfig +57%, androidsdk gấp đôi (228 → 468), doc +25%; nhánh Môi trường CI tăng thêm 407 run. Không thêm được mẫu flaky, compatibility và gần như không thêm crash. 41% run Android quy tắc chưa gán được, cao hơn mức 32% của dữ liệu cũ."),
   B("**Đầu vào mô hình:** chia đầu vào thành 3 phần, mỗi phần ứng với một tầng của cây nhãn: **đổi gì** (tóm tắt diff ứng với tầng 1), **hỏng ở bước nào** (giai đoạn và công cụ bị fail ứng với tầng 2), **hỏng ra sao** (khối log quanh chỗ lỗi ứng với tầng 3). Khối log lỗi chứa dòng bằng chứng ở **84%** run, so với 56% khi lấy theo vị trí cuối log."),
   B("**Gán lại nhãn lỗi hết bộ nhớ (OOM):** 508 run đổi nhãn. Chủ yếu là 443 run của một repo Android trước đây bị gán nhầm lint; 182 run trong số đó thật ra là hết bộ nhớ (lá crash)."),
@@ -115,7 +115,7 @@ const body = [
     ["Đợt Android", "59", "4.280", "3.555", "2.101", "1.454", "41%"],
     ["**Tổng**", "**278**", "**124.708**", "**90.218**", "**61.602**", "**28.616**", "**32%**"],
   ], [26, 8, 12, 12, 14, 14, 9]),
-  CAP("Bảng 3. Số run theo đợt crawl. Nhãn của mọi đợt tính bằng bộ quy tắc mới nhất (phiên bản 2026-10-26, sau đợt rà soát nhãn lá). Tỉ lệ ? = chưa gán được / run có log."),
+  CAP("Bảng 3. Số run theo đợt crawl. Nhãn của mọi đợt tính bằng bộ quy tắc mới nhất (phiên bản 2026-10-26, sau đợt rà soát nhãn lá). Tỉ lệ ? = chưa gán được / run có log. Số run sau các đợt rà nhãn ở mục 4 (phiên bản 2026-10-29b-doc) xem Bảng 1."),
 
   H2("2.3. Số mẫu theo lá"),
   table(["Tầng 1", "Tầng 2", "Lá", "Đợt 1 + 2", "Đợt 3", "Android", "Tổng", "Tăng"], [
@@ -135,7 +135,7 @@ const body = [
     ["", "Chạy lại", "network", "2.406", "66", "22", "2.494", "+4%"],
     ["", "", "crash", "2.762", "1", "14", "2.777", "+1%"],
   ], [14, 13, 15, 11, 9, 9, 11, 9], { hl: [2, 3, 11] }),
-  CAP("Bảng 4. Số run có nhãn theo lá và đợt crawl. Cột Tăng = (đợt 3 + Android) / đợt 1 + 2. Dòng tô màu là lá tăng rõ."),
+  CAP("Bảng 4. Số run có nhãn theo lá và đợt crawl. Cột Tăng = (đợt 3 + Android) / đợt 1 + 2. Dòng tô màu là lá tăng rõ. Số liệu theo quy tắc 2026-10-26, trước các đợt rà nhãn ở mục 4; số run hiện tại của mỗi lá xem Bảng 1."),
 
   H2("2.4. Nhận xét"),
   B("**Đợt 3 có hiệu quả với buildconfig và doc** (+166 và +39 run) nhưng thấp hơn nhiều so với ước tính khi chọn (khoảng 841 run lá hiếm, thực tế khoảng 220). Mẫu 6 run/workflow quá nhỏ để ước lượng tỉ lệ lá."),
@@ -193,7 +193,7 @@ const body = [
   ], [10, 45, 45]),
   CAP("Bảng 7. Kế hoạch ablation."),
   P("Trước khi huấn luyện, em đo trực tiếp **tỉ lệ run mà đầu vào chứa đúng dòng bằng chứng** của nhãn, so cách chọn khối log mới với cách lấy 8 đoạn cuối, để trả lời câu hỏi \"đầu vào có chứa thông tin quyết định nhãn hay không\"."),
-  P("**Trạng thái:** cả 3 phần đầu vào đã cài đặt trong mô hình v10 (mục 5). Kết quả đo dòng bằng chứng trên 61.368 run:"),
+  P("**Trạng thái:** cả 3 phần đầu vào đã cài đặt trong mô hình v10 (mục 5). Kết quả đo dòng bằng chứng trên 61.368 run (dữ liệu trước 2 đợt rà nhãn ngày 29/10):"),
   table(["Cách chọn log", "Có đoạn chứa bằng chứng", "Bằng chứng nằm trong cửa sổ mô hình đọc"], [
     ["8 đoạn cuối log (mô hình cũ)", "92,6%", "56,0%"],
     ["**Khối log lỗi (đề xuất)**", "**96,6%**", "**84,1%**"],
