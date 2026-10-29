@@ -1,5 +1,5 @@
 {
- "source": "open coding theo cụm (label_ui opencode) | v2 14/10/2026: +63 quy tắc từ open coding 102 repo (người gán + Claude đề xuất đã được người duyệt, xem docs/duyet-quy-tac-open-coding-2026-10-14.xlsx) | 15/10/2026: thêm buildconfig + doc (lint) vào quy tắc lõi gold_labels.py; quy tắc fallback không đổi",
+ "source": "open coding theo cụm (label_ui opencode) | v2 14/10/2026: +63 quy tắc từ open coding 102 repo (người gán + Claude đề xuất đã được người duyệt, xem docs/duyet-quy-tac-open-coding-2026-10-14.xlsx) | 15/10/2026: thêm buildconfig + doc (lint) vào quy tắc lõi gold_labels.py; quy tắc fallback không đổi | 26/10/2026: rule_version mới vì sửa flaky (gold_labels.py) và lá (fine_labels.py) theo kiểm chứng 161 run; quy tắc fallback không đổi",
  "rules": [
   {
    "priority": 1,
@@ -667,7 +667,8 @@
    "label": "lint",
    "regex": "FAIL:\\s+failed\\s+to\\s+run\\s+\\S{1,100}\\s+clean\\s+lint\\S{1,60}",
    "signature": "FAIL: failed to run .<path> clean lintGplayDebug",
-   "note": "task lint fail, không thấy dấu hiệu mạng/runner",
+   "note": "task lint fail, không thấy dấu hiệu mạng/runner; 28/10/2026: chỉ khi script báo số cảnh báo tăng (gradle hết heap / chết giữa chừng không phải lint)",
+   "guard": "lint_count_increased",
    "matches_unlabeled": 37,
    "conflicts_in_human_sample": [],
    "source_regex": "FAIL:\\s+failed\\s+to\\s+run\\s+\\S{1,100}\\s+clean\\s+lint\\S{1,60}",
@@ -1569,6 +1570,6 @@
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-testcontainers:",
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-parquet-extensions:"
  ],
- "rule_version": "2026-10-18-dependency-q1q3",
+ "rule_version": "2026-10-28-oom",
  "note_bounded_quantifiers": "2026-10-14: \\S+ -> \\S{1,200} trong mọi regex để tránh backtracking thảm hoạ trên dòng log dài (kroxylicious run 34015278262, rule 42); không đổi ngữ nghĩa với token < 200 ký tự."
 }

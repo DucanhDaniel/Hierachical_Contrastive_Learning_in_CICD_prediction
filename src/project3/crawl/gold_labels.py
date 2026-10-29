@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 
-RULE_VERSION = "2026-10-18-dependency-q1q3"
+RULE_VERSION = "2026-10-28-oom"  # 28/10: OOM là nguyên nhân -> infra/crash; quy tắc lint talk-android có guard
 FALLBACK_RULES_PATH = Path(__file__).resolve().parents[3] / "configs" / "label_rules.json"
 
 
@@ -72,7 +72,8 @@ GOLD_RULES = [
               r"Java setup process failed due to: error code: (?:429|50[234])|"
               r"Failed to resolve action download info|Gradle task had a timeout|"
               r"A fatal error has been detected by the Java Runtime Environment"),
-    ("flaky", r"\b0 FAILED\b.*[1-9]\d* FLAKY|Flakes: [1-9]"),
+    # flaky chỉ khi không còn test fail thật (26/10, người duyệt: 7/10 run `Flakes: N` có Failures/Errors > 0 là test/itest)
+    ("flaky", r"\b0 FAILED\b.*[1-9]\d* FLAKY|Failures: 0, Errors: 0, Skipped: \d+, Flakes: [1-9]"),
     ("test", r"There are test failures|There were failing tests|Tests reported [1-9]\d* failures?|"
              r"\d+ tests completed, [1-9]\d* failed|=+ [1-9]\d* failed|FAILED \S+::|Test Suites: [1-9]\d* failed|"
              r"Tests run:.*(Failures: [1-9]|Errors: [1-9])|pytest checks\.\.\. \[FAILED\]|FAILED \(errors=[1-9]|"
@@ -95,6 +96,31 @@ NETWORK = re.compile(r"(?:status code[: ]+|error code[: ]+|HTTP[/\d.]*\s+)(?:401
                      r"Premature end of Content-Length|SSLHandshakeException|Remote host terminated the handshake")
 MISSING_ARTIFACT = re.compile(r"Could not find artifact|Could not find [\w.\-]+:[\w.\-]+:[\w.\-]+|"
                               r"was not found in https?://|No plugin found for prefix")
+
+# OOM là nguyên nhân (28/10/2026, rà 1.723 run có OOM, người duyệt): mọi khối "What went wrong" của Gradle / mọi dòng
+# "Failed to execute goal" của Maven đều là hết bộ nhớ, không kèm lỗi compile hay test fail -> infra (lá crash), đè nhãn
+# lõi. Trước đó test/lint/compile thắng vì quy tắc lõi xét trước, vd. 459 run lint của talk-android (Gradle hết heap).
+OOM = re.compile(r"OutOfMemoryError|Java heap space|GC overhead limit exceeded|unable to create (?:new )?native thread")
+GRADLE_WRONG = re.compile(r"What went wrong:\n(.*?)(?=\n\* Try|\n\* Exception|\Z)", re.S)
+GRADLE_NOISE = re.compile(r"\[Incubating\] Problems report|--warning-mode all|Deprecated Gradle features|"
+                          r"See https://docs\.gradle|For more on this, please refer to")
+MAVEN_OOM = re.compile(r"Failed to execute goal[^\n]*(?:" + OOM.pattern + r")|^\[ERROR\] (?:" + OOM.pattern + r")[^\n]*-> \[Help",
+                       re.M)
+MAVEN_OTHER = re.compile(r"COMPILATION ERROR|Tests run: \d+, Failures: [1-9]|There are test failures")
+
+
+def oom_cause(jobs: list[str]) -> str | None:
+    """Dòng bằng chứng khi hết bộ nhớ là nguyên nhân duy nhất làm build fail, ngược lại None."""
+    text = "\n".join(jobs)
+    blocks = ["\n".join(l for l in b.splitlines() if l.strip() and not GRADLE_NOISE.search(l))
+              for b in GRADLE_WRONG.findall(text)]
+    blocks = [b for b in blocks if b]
+    if blocks and all(OOM.search(b) for b in blocks):
+        return evidence_line(blocks[0], OOM.search(blocks[0]))
+    m = MAVEN_OOM.search(text)
+    if m and not MAVEN_OTHER.search(text) and all(OOM.search(g) for g in re.findall(r"Failed to execute goal[^\n]*", text)):
+        return evidence_line(text, m)
+    return None
 
 
 def diagnostic_text(text: str) -> str:
@@ -183,6 +209,10 @@ def guard_ok(guard: str | None, text: str, match: re.Match) -> bool:
             return False
         tail = "\n".join(following[cause.end():].splitlines()[:30])
         return "Caused by:" not in tail and bool(re.search(r"BUILD FAILED|<<< (?:ERROR|FAILURE)!", tail))
+    if guard == "lint_count_increased":
+        # script riêng của talk-android in "FAIL: failed to run ./gradlew ... lint" cả khi gradle chết; chỉ là lint khi
+        # chính script báo số cảnh báo tăng (28/10/2026)
+        return bool(re.search(r"warning count increased", text))
     if guard == "failure_context":
         before = "\n".join(text[:match.start()].splitlines()[-20:])
         return bool(re.search(r"Exception in thread|<<< (?:ERROR|FAILURE)!|Failed to execute goal|Execution failed for task|"
@@ -199,6 +229,8 @@ def first_match(pattern: re.Pattern, guard: str | None, text: str) -> re.Match |
 
 def gold_label(texts: list[str]) -> tuple[str, str]:
     jobs = [diagnostic_text(text) for text in texts]
+    if ev := oom_cause(jobs):
+        return "infra", ev
     label, evidence, job = _base(jobs)
     if label == "?":
         for lab, pattern, guard in FALLBACK_RULES:

@@ -154,6 +154,26 @@ class GoldLabelsTest(unittest.TestCase):
         self.assertEqual(gold_label(["> Could not GET 'https://repo/x.pom'. Received status code 429 from server: "
                                      "Too Many Requests"])[0], 'infra')
 
+    def test_oom_cause(self):
+        # 28/10/2026: hết bộ nhớ là nguyên nhân duy nhất -> infra, đè test/lint; có lỗi khác kèm theo thì giữ nhãn lõi
+        gradle = ("* What went wrong:\nExecution failed for task ':app:testDebugUnitTest'.\n"
+                  "> Could not complete execution for Gradle Test Executor 4.\n   > Java heap space\n\n* Try:\n")
+        self.assertEqual(gold_label([gradle]), ('infra', '> Java heap space'))
+        mixed = gradle + "* What went wrong:\nExecution failed for task ':core:test'.\n> There were failing tests.\n* Try:\n"
+        self.assertEqual(gold_label([mixed])[0], 'test')
+        self.assertEqual(gold_label(['Tests run: 5, Failures: 0, Errors: 1\n[ERROR] Java heap space -> [Help 1]'])[0], 'infra')
+        self.assertEqual(gold_label(['Tests run: 5, Failures: 2, Errors: 0\n[ERROR] Java heap space -> [Help 1]'])[0], 'test')
+        self.assertEqual(gold_label(['[ERROR] COMPILATION ERROR\n[ERROR] Java heap space -> [Help 1]'])[0], 'compile')
+        # OOM chỉ trong output, tổng kết là test fail
+        self.assertEqual(gold_label(['java.lang.OutOfMemoryError: Java heap space\n'
+                                     "* What went wrong:\n> There were failing tests.\n* Try:"])[0], 'test')
+
+    def test_talk_android_lint_needs_count_increase(self):
+        fail = 'BUILD FAILED in 5m\nFAIL: failed to run ./gradlew clean lintGplayDebug\n'
+        self.assertEqual(gold_label([fail + 'found warnings: 105\nFAIL: warning count increased'])[0], 'lint')
+        self.assertEqual(gold_label([fail + 'SUCCESS: count stayed the same\nlint.html file is missing!'])[0], '?')
+        self.assertEqual(gold_label(['* What went wrong:\nJava heap space\n* Try:\n' + fail])[0], 'infra')
+
 
 if __name__ == '__main__':
     unittest.main()

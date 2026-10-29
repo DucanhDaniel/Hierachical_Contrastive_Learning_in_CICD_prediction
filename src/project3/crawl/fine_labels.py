@@ -33,17 +33,32 @@ ROOTS = [Path("data/validate"), Path("data/crawl_pr")]
 LINT = [("doc", r"\.java:\d+: error: (?:" + DOC_KINDS + r")|javadoc"),
         ("license", r"rat|Rat check|Unapproved|license|copyright"),
         ("compatibility", r"revapi|japicmp|incompatibilit|metalava|BreakingChanges")]
+# 26/10/2026 (người duyệt sau kiểm chứng 161 run, pipeline.leaf_review): khoá kho Maven cục bộ không phải git (-> infra
+# khác); lỗi mạng rõ ràng (timeout đọc, tải action fail, handshake) xét trước androidsdk/crash; adb/cổng emulator là
+# androidsdk; Connection refused tới localhost là dịch vụ/container của test không lên -> infra khác, không phải mạng.
 INFRA = [("git", r"fatal: |/usr/bin/git' failed|unable to access 'https://github|failed to push some refs|upload-pack|"
-                 r"could not read Username|Could not acquire shared lock"),
-         ("androidsdk", r"android sdk|sdkmanager|ANDROID_(?:HOME|SDK)|avdmanager|emulator|licenses? (?:have|has) not been accepted"),
-         ("crash", r"runner has received a shutdown|lost communication with the server|heap space|OutOfMemory|forked VM terminated|"
+                 r"could not read Username"),
+         ("network", r"Failed to download action|ReadTimeout|SocketTimeout|Read timed out|connect timed out|"
+                     r"ConnectTimeout|Remote host terminated the handshake|Primary download failed"),
+         ("androidsdk", r"android sdk|sdkmanager|ANDROID_(?:HOME|SDK)|avdmanager|emulator|"
+                        r"licenses? (?:have|has) not been accepted|TCP port 55\d\d|\badb\b"),
+         ("crash", r"runner has received a shutdown|lost communication with the server|heap space|OutOfMemory|"
+                   r"GC overhead|unable to create (?:new )?native thread|forked VM terminated|"
                    r"VM crash|No space left|exit code 137|Killed|GC overhead|Cannot allocate memory|timed? ?out|timeout|"
                    r"exceeded the maximum execution time|partial results|fatal error has been detected|operation was canceled"),
-         ("network", r"Connection (?:refused|reset)|SocketTimeout|Service Unavailable|status code:? ?5\d\d|50[234]|"
+         ("network", r"Connection (?:refused|reset)|SocketTimeout|Service Unavailable|status code:? ?5\d\d|50[234]|"
                      r"Could not transfer|Failed to (?:download|fetch|resolve action)|Docker pull failed|"
-                     r"Temporary failure in name resolution|UnknownHost|Premature end|rate limit|429|ECONNRESET|"
+                     r"Temporary failure in name resolution|UnknownHost|Premature end|rate limit|429|ECONNRESET|"
                      r"could not connect|Unable to connect|Peer disconnected|Could not GET 'https?://|Unable to download artifact")]
-IT = re.compile(r"integration|\bIT\b|ITCase|\bIT[ -]|e2e|end.to.end|cluster|quickstart|smoke|compatib", re.I)
+LOCAL_SERVICE = re.compile(r"Connection refused[^\n]*(?:localhost|127\.0\.0\.1)|(?:localhost|127\.0\.0\.1)[^\n]*Connection refused", re.I)
+# compile -> lá khác (26/10): lỗi của bước format (google-java-format) và lệch phiên bản Kotlin metadata
+FORMATTER = re.compile(r"googlejavaformat|FormatterException")
+KOTLIN_VERSION = re.compile(r"incompatible version of Kotlin|metadata version|was compiled with an incompatible version|"
+                            r"binary version of its metadata is", re.I)
+# buildconfig -> dependency (26/10): 'dependency.version is missing' do BOM import không resolve được
+IMPORT_POM = re.compile(r"Non-resolvable import POM")
+IT = re.compile(r"integration|\bIT\b|ITCase|\bIT[ -]|e2e|end.to.end|cluster|quickstart|smoke|compatib|"
+                r"connected\w*AndroidTest|androidTest", re.I)
 MODULE = [re.compile(r"on project ([\w.\-]+)"),
           re.compile(r"task '?:([\w\-]+(?::[\w\-]+)*):\w+'?"),
           re.compile(r"/home/runner/work/[^/]+/[^/]+/([\w.\-]+)/"),
@@ -61,15 +76,29 @@ def first(rules: list, ev: str) -> str | None:
     return next((name for name, pat in rules if re.search(pat, ev, re.I)), None)
 
 
-def subtype(label: str, ev: str, workflow: str, job: str) -> str | None:
-    if label in ("compile", "buildconfig", "dependency", "flaky"):  # nhánh chỉ có một lá
+def subtype(label: str, ev: str, workflow: str, job: str, log: str = "", test_stage: str | None = None) -> str | None:
+    """Lá của một run. `log`: văn bản log job fail (nếu có); `test_stage`: test/itest suy từ công cụ fail
+    (crawl.stages.failed_tools, vd. failsafe/connectedAndroidTest -> itest, surefire default-test -> test).
+    Một số lá có thể khác nhánh tầng 2 của `label` (compile -> quality/dependency, buildconfig -> dependency):
+    người gọi cập nhật label_l2 theo PARENT."""
+    if label == "compile":
+        if FORMATTER.search(ev):
+            return "quality"
+        return "dependency" if KOTLIN_VERSION.search(ev) else "compile"
+    if label == "buildconfig":
+        return "dependency" if IMPORT_POM.search(log) else "buildconfig"
+    if label in ("dependency", "flaky"):  # nhánh chỉ có một lá
         return label
     if label == "test":
+        if test_stage in ("test", "itest"):  # công cụ fail chính xác hơn tên workflow (26/10)
+            return "itestfailure" if test_stage == "itest" else "testfailure"
         return "itestfailure" if IT.search(" ".join([ev, workflow, job])) else "testfailure"
     if label == "lint":
         return first(LINT, ev) or "quality"  # quality = vi phạm quy tắc kiểm tra code nói chung (người quyết 16/10)
     if label == "infra":
-        return first(INFRA, ev) if ev else None
+        if not ev or LOCAL_SERVICE.search(ev):
+            return None
+        return first(INFRA, ev)
     return None
 
 
@@ -115,9 +144,10 @@ def main(commits: Path, out: Path) -> None:
                      "subtype": st[0][0] if st else None, "module": md[0][0] if md else None})
     df = pd.DataFrame(rows).drop_duplicates(["repository", "head_sha", "label"])
     df.to_parquet(out, index=False)
-    bad = df.dropna(subset=["subtype"])
-    bad = bad[[PARENT.get(st) != lab for lab, st in zip(bad.label, bad.subtype)]]
-    assert bad.empty, f"subtype không thuộc nhãn tầng 2 của nó: {bad.head()}"  # đảm bảo cây: mỗi lá một cha
+    # lá đổi nhánh (compile -> quality/dependency...) chỉ áp dụng ở mức run (run_dataset); ở mức commit giữ nhãn commit
+    cross = df.subtype.notna() & (df.subtype.map(PARENT) != df.label)
+    print(f"lá khác nhánh nhãn commit (bỏ subtype): {int(cross.sum())}")
+    df.loc[cross, "subtype"] = None
     print(f"{len(df)} commit fail có nhãn")
     print("có subtype:", df.subtype.notna().groupby(df.label).mean().round(3).to_dict())
     print("có module :", df.module.notna().groupby(df.label).mean().round(3).to_dict())
