@@ -77,7 +77,7 @@ GOLD_RULES = [
     ("test", r"There are test failures|There were failing tests|Tests reported [1-9]\d* failures?|"
              r"\d+ tests completed, [1-9]\d* failed|=+ [1-9]\d* failed|FAILED \S+::|Test Suites: [1-9]\d* failed|"
              r"Tests run:.*(Failures: [1-9]|Errors: [1-9])|pytest checks\.\.\. \[FAILED\]|FAILED \(errors=[1-9]|"
-             r"Execution failed for task ':[^']*([tT]est|integrationTest)'|Quickstart failed|(?<![\d.])[1-9]\d* FAILED\b(?!:)|Found [1-9]\d* test failures|"
+             r"Execution failed for task ':[^']*([tT]est|integrationTest)'|Quickstart failed|(?<![\w.])[1-9]\d* FAILED\b(?!:)|Found [1-9]\d* test failures|"
              r"Some tests completed with an Error|\d+ tests, \d+ passed, [1-9]\d* failed|"
              r"ERROR: Test execution of \S+ is FAILED"),
     # Artifact không tồn tại được xét riêng khi chưa có nguyên nhân test rõ ràng.

@@ -190,3 +190,6 @@ def test_cpp_object_failure_is_compile_not_test():
     assert not re.search(rx["test"], line)
     assert re.search(rx["compile"], line)
     assert re.search(rx["test"], "BUILD 3 FAILED")
+    # tên task kết thúc bằng số (Arm64, JDK17) không phải số test fail
+    assert not re.search(rx["test"], "> Task :appleApp:linkDebugTestIosSimulatorArm64 FAILED")
+    assert not re.search(rx["test"], "> Task :core:testOnJDK17 FAILED")
