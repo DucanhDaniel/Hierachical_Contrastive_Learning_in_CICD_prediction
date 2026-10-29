@@ -1,4 +1,5 @@
 """Kiểm tra các ranh giới dễ gán nhầm từ log thật và mẫu compiler JVM."""
+import re
 import unittest
 
 from project3.crawl.gold_labels import NON_BUILD_WF, base_gold_label, gold_label
@@ -177,3 +178,15 @@ class GoldLabelsTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_cpp_object_failure_is_compile_not_test():
+    """29/10/2026: '5510.9 FAILED: x.cpp.o' (mốc giờ docker build) từng khớp quy tắc test '[1-9] FAILED'."""
+    from project3.crawl.gold_labels import GOLD_RULES
+    rx = {}
+    for lab, pat in GOLD_RULES:
+        rx.setdefault(lab, pat)
+    line = "#10 5510.9 FAILED: presto_cpp/main/functions/CMakeFiles/f.dir/FunctionMetadata.cpp.o"
+    assert not re.search(rx["test"], line)
+    assert re.search(rx["compile"], line)
+    assert re.search(rx["test"], "BUILD 3 FAILED")

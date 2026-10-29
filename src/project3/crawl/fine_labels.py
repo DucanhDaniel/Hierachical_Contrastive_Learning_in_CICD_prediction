@@ -61,6 +61,11 @@ HTTP_FAIL = re.compile(r"Could not (?:GET|HEAD) 'https?://|Received status code 
 UNRESOLVED = re.compile(r"Non-resolvable parent POM|Could not resolve dependencies|Unable to resolve dependencies|"
                         r"or one of its dependencies could not be resolved")
 TRANSFER = re.compile(r"Could not transfer artifact")
+# compile/lint -> doc (29/10, rà lá yếu): lỗi do bước javadoc (-source 11 của javadoc, "reference not found" trong
+# mã delombok) in ra giống lỗi javac; dòng bằng chứng bị cắt 200 ký tự nên mất phần loại lỗi javadoc
+JAVADOC_FAIL = re.compile(r"Error while generating Javadoc|Execution failed for task '[^']*:javadoc'")
+COMPILE_FAIL = re.compile(r"COMPILATION ERROR|Compilation failed|compile(?:Test)?(?:Java|Kotlin) FAILED")
+JAVA_ERROR = re.compile(r"\.java:\d+: error:")
 # compile -> lá khác (26/10): lỗi của bước format (google-java-format) và lệch phiên bản Kotlin metadata
 FORMATTER = re.compile(r"googlejavaformat|FormatterException")
 KOTLIN_VERSION = re.compile(r"incompatible version of Kotlin|metadata version|was compiled with an incompatible version|"
@@ -91,9 +96,12 @@ def subtype(label: str, ev: str, workflow: str, job: str, log: str = "", test_st
     (crawl.stages.failed_tools, vd. failsafe/connectedAndroidTest -> itest, surefire default-test -> test).
     Một số lá có thể khác nhánh tầng 2 của `label` (compile -> quality/dependency, buildconfig -> dependency):
     người gọi cập nhật label_l2 theo PARENT."""
+    javadoc = bool(JAVADOC_FAIL.search(log)) and not COMPILE_FAIL.search(log)
     if label == "compile":
         if FORMATTER.search(ev):
             return "quality"
+        if javadoc:
+            return "doc"
         return "dependency" if KOTLIN_VERSION.search(ev) else "compile"
     if label == "buildconfig":
         return "dependency" if IMPORT_POM.search(log) else "buildconfig"
@@ -104,6 +112,8 @@ def subtype(label: str, ev: str, workflow: str, job: str, log: str = "", test_st
             return "itestfailure" if test_stage == "itest" else "testfailure"
         return "itestfailure" if IT.search(" ".join([ev, workflow, job])) else "testfailure"
     if label == "lint":
+        if javadoc and JAVA_ERROR.search(ev) and not first(LINT, ev):
+            return "doc"
         return first(LINT, ev) or "quality"  # quality = vi phạm quy tắc kiểm tra code nói chung (người quyết 16/10)
     if label == "infra":
         if not ev or LOCAL_SERVICE.search(ev):

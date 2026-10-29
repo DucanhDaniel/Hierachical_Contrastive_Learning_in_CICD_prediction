@@ -55,3 +55,13 @@ def test_infra_cause_from_log():
              "resolved: org.springframework.boot:spring-boot-starter-parent:pom:2.6.0 (absent): Could not tra"
     assert subtype("infra", parent, "", "", log=parent + "nsfer artifact org.springframework.boot:x") == "network"
     assert subtype("infra", parent, "", "", log=parent) is None
+
+
+def test_javadoc_errors_are_doc():
+    """29/10/2026 chiều: lỗi in ra giống javac nhưng do bước javadoc (dòng bằng chứng bị cắt 200 ký tự)."""
+    ev = "##[error]/home/runner/work/sp/sp/a/src/main/java/org/A.java:21: error: records are not supported in -source 11"
+    log = "[INFO] --- javadoc:3.12.0:jar (attach-javadocs) @ a ---\n[ERROR] MavenReportException: Error while generating Javadoc:"
+    assert subtype("compile", ev, "", "", log=log) == "doc"
+    assert subtype("compile", ev, "", "", log=log + "\n[ERROR] COMPILATION ERROR :") == "compile"
+    assert subtype("lint", "##[error]/w/a/b/A.java:44: error: ", "", "", log="Execution failed for task ':a:javadoc'.") == "doc"
+    assert subtype("lint", "[ant:checkstyle] [ERROR] /w/A.java:3: Line is longer", "", "", log="") == "quality"

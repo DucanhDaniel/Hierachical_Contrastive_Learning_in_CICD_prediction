@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 
-RULE_VERSION = "2026-10-29-infra"  # 29/10: lá infra -> androidsdk/network theo log; lệch phiên bản Gradle -> buildconfig
+RULE_VERSION = "2026-10-29b-doc"  # 29/10 chiều: javadoc -> doc (dòng bằng chứng bị cắt), checkRuntimeDeps -> dependency, sửa "N FAILED" khớp nhầm mốc giờ
 FALLBACK_RULES_PATH = Path(__file__).resolve().parents[3] / "configs" / "label_rules.json"
 
 
@@ -47,7 +47,7 @@ GOLD_RULES = [
                     r"\.[\w().:]{1,60}' (?:for \S{1,200} is missing|must be unique|must be a valid version)|"
                     r"Non-parseable POM|Malformed POM|Non-readable POM|Could not find the selected project in the reactor|"
                     r"Could not compile (?:build|settings) file|Script compilation errors?:"),
-    ("compile", r"COMPILATION ERROR|Compilation failure|Compilation failed|error: cannot find symbol|"
+    ("compile", r"COMPILATION ERROR|FAILED: \S+\.(?:cpp|cc|cxx|c)\.o\b|Compilation failure|Compilation failed|error: cannot find symbol|"
                 r"\.java:\[?\d+[,\]:](?! error: (?:" + DOC_KINDS + r")).*error|error: (incompatible types|method does not override)|"
                 r"error TS\d+|SyntaxError: invalid syntax|"
                 r"^.*\[(?:ERROR|Error)\].*\.scala:\d+:|^.*e: (?:file://)?\S+\.kt:\d+:\d+"),
@@ -77,7 +77,7 @@ GOLD_RULES = [
     ("test", r"There are test failures|There were failing tests|Tests reported [1-9]\d* failures?|"
              r"\d+ tests completed, [1-9]\d* failed|=+ [1-9]\d* failed|FAILED \S+::|Test Suites: [1-9]\d* failed|"
              r"Tests run:.*(Failures: [1-9]|Errors: [1-9])|pytest checks\.\.\. \[FAILED\]|FAILED \(errors=[1-9]|"
-             r"Execution failed for task ':[^']*([tT]est|integrationTest)'|Quickstart failed|\b[1-9]\d* FAILED\b|Found [1-9]\d* test failures|"
+             r"Execution failed for task ':[^']*([tT]est|integrationTest)'|Quickstart failed|(?<![\d.])[1-9]\d* FAILED\b(?!:)|Found [1-9]\d* test failures|"
              r"Some tests completed with an Error|\d+ tests, \d+ passed, [1-9]\d* failed|"
              r"ERROR: Test execution of \S+ is FAILED"),
     # Artifact không tồn tại được xét riêng khi chưa có nguyên nhân test rõ ràng.

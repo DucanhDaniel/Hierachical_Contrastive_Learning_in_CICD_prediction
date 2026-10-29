@@ -262,7 +262,7 @@
   },
   {
    "priority": 25,
-   "label": "lint",
+   "label": "dependency",
    "regex": "Execution\\s+failed\\s+for\\s+task\\s+':iceberg\\-spark:iceberg\\-spark\\-runtime\\-\\S{1,200}\\.\\S{1,200}_\\S{1,200}\\.\\S{1,200}:checkRuntimeDeps'\\.",
    "signature": "> Task :iceberg-spark:iceberg-spark-runtime-<n>.<n>_<n>.<n>:checkRuntimeDeps FAILED",
    "note": "",
@@ -304,7 +304,7 @@
   },
   {
    "priority": 29,
-   "label": "lint",
+   "label": "dependency",
    "regex": "Execution\\s+failed\\s+for\\s+task\\s+':iceberg\\-flink:iceberg\\-flink\\-runtime\\-\\S{1,200}\\.\\S{1,200}:checkRuntimeDeps'\\.",
    "signature": "> Task :iceberg-flink:iceberg-flink-runtime-<n>.<n>:checkRuntimeDeps FAILED",
    "note": "",
@@ -334,7 +334,7 @@
   },
   {
    "priority": 32,
-   "label": "lint",
+   "label": "dependency",
    "regex": ">\\s+Task\\s+:iceberg\\-kafka\\-connect:iceberg\\-kafka\\-connect\\-runtime:checkRuntimeDeps\\s+FAILED",
    "signature": "> Task :iceberg-kafka-connect:iceberg-kafka-connect-runtime:checkRuntimeDeps FAILED",
    "note": "",
@@ -1570,6 +1570,6 @@
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-testcontainers:",
   "[ERROR] Failed to execute goal org.owasp:dependency-check-maven:<n>.<n>.<n>:check (default-cli) on project druid-parquet-extensions:"
  ],
- "rule_version": "2026-10-29-infra",
+ "rule_version": "2026-10-29b-doc",
  "note_bounded_quantifiers": "2026-10-14: \\S+ -> \\S{1,200} trong mọi regex để tránh backtracking thảm hoạ trên dòng log dài (kroxylicious run 34015278262, rule 42); không đổi ngữ nghĩa với token < 200 ký tự."
 }
