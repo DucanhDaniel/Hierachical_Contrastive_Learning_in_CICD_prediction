@@ -70,6 +70,10 @@ DOC_CHECK = '(runs.leaf == "doc").sum() > 280 and (runs.leaf == "crash").sum() >
 if __name__ == "__main__":
     print(notebook("p3_v10_doc_a.ipynb", "v10 soft: fold 0-2, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-a", V10, "0 1 2", DOC_CHECK, "A100"))
     print(notebook("p3_v10_doc_b.ipynb", "v10 soft: fold 3-4, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-b", V10, "3 4", DOC_CHECK, "A100"))
+    # seed 0 trên A100 lệch ±0.08/fold so với lần chạy T4 -> thêm seed 1 để lấy trung bình
+    V10_S1 = V10.replace("--out", "--seed-start 1 --out")
+    print(notebook("p3_v10_doc_s1_a.ipynb", "v10 soft seed 1: fold 0-2, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-s1-a", V10_S1, "0 1 2", DOC_CHECK, "A100"))
+    print(notebook("p3_v10_doc_s1_b.ipynb", "v10 soft seed 1: fold 3-4, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-s1-b", V10_S1, "3 4", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
                    "--max-tokens 512 --window 1600 --out OUT/results_fold$f.json"))
