@@ -99,6 +99,13 @@ if __name__ == "__main__":
                    LINES, "0", DOC_CHECK, "A100", code=True))
     print(notebook("p3_v10_lines_b.ipynb", "Thử cửa sổ chia đôi + điểm từng dòng: fold 3 (A, C, B)", "p3-colab-v10-lines-b",
                    LINES, "3", DOC_CHECK, "A100", code=True))
+    # 30/10 tối: cấu hình C thắng pilot -> chạy đủ 5 fold x 2 seed (seed 1 fold 0, 3 đã có từ pilot); f = "seed:fold"
+    FULL_C = ("s=${f%%:*}; k=${f##*:}; " + TRAIN.replace("--fold $f", "--fold $k").replace("--seed-start 1", "--seed-start $s")
+              + " --line-attn --ev-loss 0.5 --save-repr --repr-train 500 --out OUT/C_s${s}_fold$k.json")
+    print(notebook("p3_v10_c_a.ipynb", "v10 cấu hình C (chia đôi + điểm dòng + loss dòng): seed 1 fold 1, 2, 4 + seed 0 fold 0",
+                   "p3-colab-v10-c-a", FULL_C, "1:1 1:2 1:4 0:0", DOC_CHECK, "A100", code=True))
+    print(notebook("p3_v10_c_b.ipynb", "v10 cấu hình C (chia đôi + điểm dòng + loss dòng): seed 0 fold 1-4",
+                   "p3-colab-v10-c-b", FULL_C, "0:1 0:2 0:3 0:4", DOC_CHECK, "A100", code=True))
     print(notebook("p3_v10_attn_b.ipynb", "v10 seed 1 + attention: fold 3", "p3-colab-v10-attn-b", V10_ATTN, "3", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
