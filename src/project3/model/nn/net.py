@@ -15,7 +15,8 @@ from .pooling import seg_softmax_pool
 
 class LogNet(nn.Module):
     def __init__(self, tree: LabelTree, device, freeze_layers: int = 6, tfidf_dim: int = 0,
-                 share_parent: bool = False, proxy: bool = False, encoder: str = ENCODER, feat_dim: int = 0):
+                 share_parent: bool = False, proxy: bool = False, encoder: str = ENCODER, feat_dim: int = 0,
+                 line_attn: bool = False):
         from transformers import AutoModel, AutoTokenizer
         super().__init__()
         self.tok = AutoTokenizer.from_pretrained(encoder)
@@ -28,6 +29,9 @@ class LogNet(nn.Module):
         d = self.enc.config.hidden_size
         n1, n2, n3 = len(tree.l1), len(tree.l2), len(tree.l3)
         self.att_c, self.att_j = nn.Linear(d, 1), nn.Linear(d, 1)
+        self.line_attn = line_attn
+        if line_attn:  # đoạn = attention trên các dòng (token gom theo dòng) thay cho trung bình token
+            self.att_l = nn.Linear(d, 1)
         self.ctx = nn.Sequential(nn.Linear(d, 64), nn.GELU())
         if tfidf_dim:
             self.tf = nn.Sequential(nn.Linear(tfidf_dim, 64), nn.GELU())
@@ -52,17 +56,50 @@ class LogNet(nn.Module):
         m = e["attention_mask"].unsqueeze(-1).to(h.dtype)
         return ((h * m).sum(1) / m.sum(1)).float()
 
+    def embed_lines(self, texts: list, max_len: int):
+        """Mã hoá cả đoạn (giữ ngữ cảnh) rồi gom token theo dòng chứa nó. Trả về (vector từng dòng, đoạn của dòng,
+        số thứ tự dòng trong đoạn); dòng không còn token nào sau khi cắt max_len thì không có mặt."""
+        e = self.tok(texts, padding=True, truncation=True, max_length=max_len, return_tensors="pt",
+                     return_offsets_mapping=True)
+        off = e.pop("offset_mapping").numpy()
+        h = self.enc(**e.to(self.dev)).last_hidden_state
+        keep = (off[:, :, 1] > off[:, :, 0]) & e["attention_mask"].cpu().numpy().astype(bool)  # bỏ token đặc biệt, pad
+        gid = np.full(off.shape[:2], -1)
+        l2c, lno = [], []
+        for b, t in enumerate(texts):
+            nl = np.array([i for i, ch in enumerate(t) if ch == "\n"])
+            line = np.searchsorted(nl, off[b, :, 0], side="right")
+            uniq = np.unique(line[keep[b]])
+            gid[b, keep[b]] = len(lno) + np.searchsorted(uniq, line[keep[b]])
+            l2c += [b] * len(uniq)
+            lno += uniq.tolist()
+        flat = torch.tensor(gid.reshape(-1), device=self.dev)
+        sel = flat >= 0
+        hv = h.reshape(-1, h.shape[-1])[sel].float()
+        s = torch.zeros(len(lno), h.shape[-1], device=self.dev).index_add(0, flat[sel], hv)
+        n = torch.zeros(len(lno), device=self.dev).index_add(0, flat[sel], torch.ones(len(hv), device=self.dev))
+        return s / n.unsqueeze(1), torch.tensor(l2c, device=self.dev), lno
+
     def forward(self, texts: list, c2j: list, j2r: list, n_runs: int, ctx: list, tf=None,
                 max_tokens: int = 256, keep: bool = False, ft=None):
         """texts: các đoạn log của batch; c2j[i] = job của đoạn i; j2r[j] = run (trong batch) của job j;
         ctx: ngữ cảnh CI từng run; tf: mảng log xác suất TF-IDF từng run (nếu có); ft: đặc trưng có cấu trúc (nếu có).
         Trả về (logit tầng 1, tầng 2, lá, đặc trưng so sánh đã chuẩn hoá, extra); extra = {"w": trọng số từng đoạn trong
-        cả run, "z": z} khi keep, ngược lại None."""
-        h = self.embed(texts, max_tokens)
+        cả run, "z": z} khi keep, ngược lại None. Với line_attn, extra luôn có "line_logw" (log trọng số từng dòng
+        trong cả run, còn gradient, cho loss chỉ dòng lỗi), "l2c" (đoạn của dòng), "lno" (số thứ tự dòng trong đoạn)."""
         c2j, j2r = torch.tensor(c2j, device=self.dev), torch.tensor(j2r, device=self.dev)
+        if self.line_attn:
+            lv, l2c, lno = self.embed_lines(texts, max_tokens)
+            h, wl = seg_softmax_pool(lv, self.att_l(lv).squeeze(1), l2c, len(texts))
+        else:
+            h = self.embed(texts, max_tokens)
         j, wc = seg_softmax_pool(h, self.att_c(h).squeeze(1), c2j, len(j2r))
         r, wj = seg_softmax_pool(j, self.att_j(j).squeeze(1), j2r, n_runs)
         extra = {"w": (wc * wj[c2j]).detach().cpu().numpy()} if keep else None
+        if self.line_attn:
+            extra = extra or {}
+            wcr = wc * wj[c2j]  # trọng số đoạn trong cả run
+            extra.update(line_logw=torch.log(wl.clamp_min(1e-12)) + torch.log(wcr[l2c].clamp_min(1e-12)), l2c=l2c, lno=lno)
         feats = [r, self.ctx(self.embed(ctx, 64))]
         if tf is not None:
             feats.append(self.tf(torch.tensor(tf, device=self.dev)))

@@ -59,18 +59,25 @@ def select_chunks(scores_by_job: list, max_chunks: int) -> list:
     return sorted(picked)
 
 
-def focus_window(text: str, n: int = 1600) -> str:
-    """Dòng đầu (ranh giới goal/task) + cửa sổ n ký tự quanh dòng báo lỗi CUỐI cùng của đoạn (lùi 2/3 về trước);
-    không có dòng lỗi thì lấy phần cuối như clip_chunk. Log ≈ 3,1 ký tự/token UniXcoder: n = 1600 dùng với 512 token
-    (28/10; v9 dùng 1100 ký tự với 256 token -> 77% cửa sổ bị cắt, chỉ 58% run còn dòng bằng chứng, nay 82%)."""
+def focus_window(text: str, n: int = 1600, mode: str = "last") -> str:
+    """Dòng đầu (ranh giới goal/task) + cửa sổ n ký tự quanh dòng báo lỗi của đoạn; không có dòng lỗi thì lấy phần cuối
+    như clip_chunk. Log ≈ 3,1 ký tự/token UniXcoder: n = 1600 dùng với 512 token.
+    mode `last`: quanh dòng lỗi CUỐI (lùi 2/3 về trước; 28/10, giữ dòng bằng chứng ở 83% run).
+    mode `split` (30/10): Maven/Gradle in lỗi thật TRƯỚC dòng tổng kết cuối (BUILD FAILURE, Failed to execute goal), nên
+    lấy nửa quanh dòng lỗi ĐẦU + nửa quanh dòng lỗi cuối; hai dòng đủ gần thì một cửa sổ liền từ dòng đầu (90%)."""
     first, _, rest = text.partition("\n")
+    head = first[:200] + "\n"
     if len(rest) <= n:
         return first[:200] + ("\n" + rest if rest else "")
     hits = [m.start() for m in FAIL_LINE.finditer(rest)] or [m.start() for m in ERR.finditer(rest)]
     if not hits:
-        return first[:200] + "\n" + rest[-n:]
-    a = max(0, min(hits[-1] - 2 * n // 3, len(rest) - n))
-    return first[:200] + "\n" + rest[a:a + n]
+        return head + rest[-n:]
+    cut = lambda c, m, before: rest[max(0, min(c - before, len(rest) - m)):][:m]
+    if mode == "last":
+        return head + cut(hits[-1], n, 2 * n // 3)
+    if hits[-1] - hits[0] <= n - n // 3:
+        return head + cut(hits[0], n, n // 3)
+    return head + cut(hits[0], n // 2, n // 6) + "\n" + cut(hits[-1], n // 2, n // 3)
 
 
 def _onehot(stage):

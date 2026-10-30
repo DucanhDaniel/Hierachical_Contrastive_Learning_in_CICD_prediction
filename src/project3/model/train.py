@@ -12,6 +12,9 @@ cùng lá 1, anh em SIB_W), `proxy` (+ contrastive theo nguyên mẫu phân cấ
                    diff, all = cả hai, none = bỏ (ablation A1/A6)
   --chunks tail    đọc 8 đoạn cuối log như trước 27/10 (ablation A2); mặc định `error` = khối log quanh chỗ fail
   --flat           chỉ một đầu phân loại lá, không học tầng 1–2 (ablation A3); tầng 1–2 suy từ lá dự đoán
+  --window-mode split  cửa sổ = nửa quanh dòng lỗi đầu + nửa quanh dòng lỗi cuối (mặc định `last`: quanh dòng lỗi cuối)
+  --line-attn      gom token theo dòng, attention trên dòng -> điểm từng dòng (lưu 5 dòng cao nhất khi --save-repr)
+  --ev-loss λ      + λ × (-log tổng trọng số các dòng chứa dòng bằng chứng của quy tắc), chỉ run không bị che
   --views 2        mỗi run hai góc nhìn (giữ ngẫu nhiên --view-keep đoạn, che độc lập); CE học cả hai, soft/hcl thêm
                    InfoNCE coi hai góc nhìn của cùng run là cặp dương
 Che bằng chứng: với xác suất --mask-p, xoá mọi dòng chứa dòng bằng chứng trước khi mã hoá. Chọn epoch theo macro-F1 tầng 2
@@ -122,7 +125,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
 
     net = LogNet(tree, dev, freeze_layers=a.freeze_layers, tfidf_dim=fold.tfidf[False].shape[1] if fold.tfidf else 0,
                  share_parent=a.share_parent, proxy=variant == "proxy",
-                 feat_dim=fold.feats[False].shape[1] if fold.feats else 0).to(dev)
+                 feat_dim=fold.feats[False].shape[1] if fold.feats else 0, line_attn=a.line_attn).to(dev)
     enc_params = [p for p in net.enc.parameters() if p.requires_grad]
     head_params = [p for n, p in net.named_parameters() if not n.startswith("enc.")]
     opt = torch.optim.AdamW([{"params": enc_params, "lr": a.lr_enc}, {"params": head_params, "lr": 1e-3}],
@@ -135,16 +138,30 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
         tf = np.stack([fold.tfidf[bool(m)][x] for x, m in zip(rows, masked)]) if fold.tfidf else None
         ft = np.stack([fold.feats[bool(m)][x] for x, m in zip(rows, masked)]) if fold.feats else None
         out = net(texts, c2j, j2r, len(rows), [fold.ctx[x] for x in rows], tf, max_tokens=a.max_tokens, keep=keep, ft=ft)
-        return out, pos
+        return out, pos, texts
+
+    def evidence_lines(rows, masked, pos, texts, extra):
+        """--ev-loss: run k -> chỉ số các dòng (trong extra) chứa dòng bằng chứng của quy tắc; bỏ run bị che."""
+        tgt, cache = {}, {}
+        for g, (c, n) in enumerate(zip(extra["l2c"].tolist(), extra["lno"])):
+            k = pos[c][0]
+            key = fold.keys[rows[k]]
+            if masked[k] or not key:
+                continue
+            ls = cache.setdefault(c, texts[c].split("\n"))
+            if n < len(ls) and key in ls[n]:
+                tgt.setdefault(k, []).append(g)
+        return tgt
 
     def predict(rows, masked, keep=False):
-        """-> (lá dự đoán, log xác suất 3 tầng, attention từng đoạn (JSON) hoặc None, z hoặc None)."""
+        """-> (lá dự đoán, log xác suất 3 tầng, attention từng đoạn (JSON) hoặc None, z hoặc None,
+        5 dòng điểm cao nhất mỗi run (JSON [(job, đoạn, dòng, trọng số, nội dung)]) khi keep + --line-attn, hoặc None)."""
         net.eval()
-        preds, lps, attn, zs = [], [], [], []
+        preds, lps, attn, zs, top_lines = [], [], [], [], []
         with torch.no_grad(), autocast():
             for i in range(0, len(rows), a.eval_batch):
                 b = rows[i:i + a.eval_batch]
-                (o1, o2, o3, _, extra), pos = forward(b, [masked] * len(b), keep)
+                (o1, o2, o3, _, extra), pos, texts = forward(b, [masked] * len(b), keep)
                 p, lp = decode(o1, o2, o3, tree, flat=a.flat)
                 preds += p
                 lps.append(lp)
@@ -154,7 +171,18 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
                         per_run[k].append((ji, ci, round(float(x), 4)))
                     attn += [json.dumps(x) for x in per_run]
                     zs += list(extra["z"])
-        return preds, np.concatenate(lps), (attn if keep else None), (zs if keep else None)
+                    if a.line_attn:
+                        lw = extra["line_logw"].float().exp().cpu().numpy()
+                        per_run = [[] for _ in b]
+                        for g, (c, n) in enumerate(zip(extra["l2c"].tolist(), extra["lno"])):
+                            per_run[pos[c][0]].append((g, c, n))
+                        for k, gs in enumerate(per_run):
+                            top = sorted(gs, key=lambda x: -lw[x[0]])[:5]
+                            top_lines.append(json.dumps([(pos[c][1], pos[c][2], n, round(float(lw[g]), 4),
+                                                          texts[c].split("\n")[n][:200]) for g, c, n in top],
+                                                        ensure_ascii=False))
+        return (preds, np.concatenate(lps), (attn if keep else None), (zs if keep else None),
+                (top_lines if keep and a.line_attn else None))
 
     def contrastive(feat, bt, step):
         lab = torch.stack([y1[bt], y2[bt], y3[bt]], 1)
@@ -184,13 +212,19 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
             b = list(b) * a.views  # --views 2: mỗi run hai góc nhìn (đoạn giữ ngẫu nhiên + che độc lập), CE học cả hai
             mk = (rng.random(len(b)) < a.mask_p).tolist()
             with autocast():
-                (o1, o2, o3, feat, _), _ = forward(b, mk, drop=(rng, a.view_keep) if a.views > 1 else None)
+                (o1, o2, o3, feat, extra), pos, texts = forward(b, mk, drop=(rng, a.view_keep) if a.views > 1 else None)
             bt = torch.tensor(b, device=dev)
             loss = F.cross_entropy(o3.float(), y3[bt], weight=w3, ignore_index=-1)
             if not a.flat:
                 loss = loss + F.cross_entropy(o1.float(), y1[bt], weight=w1) + F.cross_entropy(o2.float(), y2[bt], weight=w2)
             if a.share_parent:
                 loss = loss + C.SHARE_L2 * net.h3.weight.float().pow(2).sum()
+            if a.ev_loss:  # dòng chứa bằng chứng phải có trọng số cao trong cả run: -log tổng trọng số các dòng đó
+                tgt = evidence_lines(b, mk, pos, texts, extra)
+                if tgt:
+                    lw = extra["line_logw"]
+                    loss = loss + a.ev_loss * torch.stack([-torch.logsumexp(lw[torch.tensor(g, device=dev)], 0)
+                                                            for g in tgt.values()]).mean()
             if variant != "ce":
                 loss = loss + C.LAMBDA * contrastive(feat, bt, step)
                 if a.views > 1:  # cặp dương = hai góc nhìn của cùng run (thông tin CE không có)
@@ -213,18 +247,20 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
 
     res = {}
     for name, m in (("full", False), ("masked", True)):
-        p, lp, attn, z = predict(te, m, keep=a.save_repr)
+        p, lp, attn, z, lines = predict(te, m, keep=a.save_repr)
         res[name] = hier_scores(fold.leaf[te].tolist(), p, tree.parent, tree.group)
         df = pd.DataFrame({"variant": variant, "seed": seed, "test": name, "run_id": runs.run_id.values[te],
                            "pred": p, "logp": list(lp)})
         if a.save_repr:
             df["attn"], df["z"] = attn, z
+            if lines is not None:
+                df["lines"] = lines
         out_preds.append(df)
         print(f"  {variant} test {name}: macro-F1 lá {res[name]['macroF1_l3']:.3f} tầng 2 {res[name]['macroF1_l2']:.3f} "
               f"tầng 1 {res[name]['macroF1_l1']:.3f}", flush=True)
     if a.save_repr:  # z của một phần tập train (log nguyên vẹn) cho kNN / truy hồi / định tuyến
         sub = np.random.default_rng(seed).permutation(tr)[:a.repr_train]
-        p, _, _, z = predict(sub, False, keep=True)
+        p, _, _, z, _ = predict(sub, False, keep=True)
         pd.DataFrame({"variant": variant, "seed": seed, "run_id": runs.run_id.values[sub], "pred": p, "z": z}
                      ).to_parquet(Path(a.out).with_suffix(f".train_{variant}{seed}.parquet"), index=False)
     res["minutes"] = round((time.time() - t0) / 60, 1)
@@ -234,6 +270,8 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
 
 
 def main(a) -> None:
+    if a.ev_loss and not a.line_attn:
+        sys.exit("--ev-loss cần --line-attn")
     runs, chunks, tree = load_pack(a.data, "chunks_tail.parquet" if a.chunks == "tail" else "chunks.parquet")
     if a.smoke:
         idx = np.concatenate([np.random.default_rng(0).permutation(np.where(runs.repo_fold.values == k)[0])[:60]
@@ -243,7 +281,7 @@ def main(a) -> None:
     va = np.random.default_rng(0).permutation(va)
     tfidf = load_tfidf((a.tfidf_dir or a.data) / f"tfidf_fold{a.fold}.parquet", runs) if a.tfidf else None
     feats = load_feats(a.data / "features.parquet", runs, a.feats, tr) if a.feats != "none" else None
-    fold = Fold(runs, chunks, tree, tr, va, te, tfidf, feats, partial(focus_window, n=a.window) if a.chunks == "error" else clip_chunk)
+    fold = Fold(runs, chunks, tree, tr, va, te, tfidf, feats, partial(focus_window, n=a.window, mode=a.window_mode) if a.chunks == "error" else clip_chunk)
     print(f"fold {a.fold}: train {len(tr)}, val {len(va)} (dùng {min(len(va), a.val_max)}), test {len(te)} run", flush=True)
     results, preds = {"args": {k: str(v) for k, v in vars(a).items()}, "tree": tree.to_dict()}, []
     for variant in a.variants:
@@ -277,6 +315,11 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--chunks", choices=["error", "tail"], default="error", help="khối log lỗi | 8 đoạn cuối log (cũ)")
     ap.add_argument("--window", type=int, default=1600, help="số ký tự cửa sổ quanh dòng lỗi (--chunks error); "
                     "dùng với --max-tokens 512")
+    ap.add_argument("--window-mode", choices=["last", "split"], default="last",
+                    help="cửa sổ quanh dòng lỗi cuối | nửa quanh dòng lỗi đầu + nửa quanh dòng lỗi cuối (30/10)")
+    ap.add_argument("--line-attn", action="store_true", help="đoạn = attention trên các dòng (điểm từng dòng)")
+    ap.add_argument("--ev-loss", type=float, default=0.0,
+                    help="trọng số loss chỉ dòng lỗi (cần --line-attn): dòng bằng chứng của quy tắc phải có trọng số cao")
     ap.add_argument("--flat", action="store_true", help="chỉ đầu lá (ablation bỏ phân cấp)")
     ap.add_argument("--sampler", choices=["random", "mpc"], default="random", help="mpc: batch = lá x 2 run")
     ap.add_argument("--share-parent", action="store_true", help="trọng số lá = trọng số loại cha + độ lệch")

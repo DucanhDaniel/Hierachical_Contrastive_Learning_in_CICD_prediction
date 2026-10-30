@@ -38,20 +38,30 @@ print("pid", proc.pid)'''
 
 PROGRESS = r'''import re
 log = open(f"{OUT}/train.log", encoding="utf-8", errors="replace").read().splitlines()
-keep = [l for l in log if re.search(r"===|test full|test masked|epoch|step \d+000 |LOI|XONG|Traceback|Error", l)]
+keep = [l for l in log if re.search(r"===|cấu hình|test full|test masked|epoch|step \d+000 |LOI|XONG|Traceback|Error", l)]
 print("đang chạy" if proc.poll() is None else f"đã dừng, mã {proc.returncode}")
 print("\n".join(keep[-15:]))
 print(sorted(os.listdir(OUT)))'''
 
 
+CODE_SETUP = r'''
+r = subprocess.run("kaggle datasets download ducanhpham2k5/p3-code -p /content/p3code --unzip --force", shell=True,
+                   capture_output=True, text=True)
+import zipfile
+print("mã mới:", len(zipfile.ZipFile("/content/p3code/project3_code.pyz").namelist()), "file")'''
+
+
 def notebook(name: str, title: str, slug: str, cmd: str, folds: str = "0 1 2 3 4",
-             check: str = '(runs.leaf == "crash").sum() > 2900', gpu: str = "L4") -> Path:
+             check: str = '(runs.leaf == "crash").sum() > 2900', gpu: str = "L4", code: bool = False) -> Path:
+    """code=True: lấy mã từ dataset p3-code (cập nhật mã không cần upload lại p3-log-data)."""
     md = (f"# {title}\n\nDữ liệu: dataset Kaggle `ducanhpham2k5/p3-log-data` . Kết quả đẩy lên dataset "
           f"riêng tư `ducanhpham2k5/{slug}` sau mỗi fold.\n\nCần: Runtime GPU (L4), secret `KAGGLE_API_TOKEN` (biểu tượng "
           "chìa khoá). Chạy lần lượt các ô; ô 3 chạy nền, ô 4 xem tiến độ. Giữ tab mở đến khi log có dòng XONG.")
     code = ['import subprocess\nprint(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv"], '
             'capture_output=True, text=True).stdout)',
-            SETUP.replace("__SLUG__", slug).replace("__CHECK__", check), RUN.replace("__CMD__", cmd).replace("__FOLDS__", folds), PROGRESS]
+            SETUP.replace("__SLUG__", slug).replace("__CHECK__", check) + (CODE_SETUP if code else ""),
+            (RUN.replace("D/project3_code.pyz", "/content/p3code/project3_code.pyz") if code else RUN)
+            .replace("__CMD__", cmd).replace("__FOLDS__", folds), PROGRESS]
     cells = [{"cell_type": "markdown", "metadata": {}, "source": md}] + [
         {"cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [], "source": c} for c in code]
     doc = {"cells": cells, "metadata": {"accelerator": "GPU", "colab": {"gpuType": gpu, "provenance": []},
@@ -77,6 +87,18 @@ if __name__ == "__main__":
     # 30/10: kiểm chứng attention có chỉ đúng đoạn log chứa dòng bằng chứng không -> lưu attention từng đoạn
     V10_ATTN = V10_S1.replace("--out", "--save-repr --repr-train 500 --out")
     print(notebook("p3_v10_attn_a.ipynb", "v10 seed 1 + attention: fold 0", "p3-colab-v10-attn-a", V10_ATTN, "0", DOC_CHECK, "A100"))
+    # 30/10 chiều: chạy thử 3 cấu hình (A cửa sổ chia đôi, C + điểm từng dòng + loss chỉ dòng lỗi, B chỉ điểm từng dòng)
+    TRAIN = ("python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
+             "--max-tokens 512 --window 1600 --seed-start 1 --window-mode split")
+    LINES = (TRAIN + " --smoke --epochs 1 --max-steps 5 --val-max 40 --line-attn --ev-loss 0.5 --out OUT/smoke.json "
+             ">> OUT/train.log 2>&1 && for c in A C B; do case $c in A) X='';; B) X='--line-attn';; "
+             "C) X='--line-attn --ev-loss 0.5';; esac; echo \"--- cấu hình $c\" >> OUT/train.log; "
+             + TRAIN + " --save-repr --repr-train 500 $X --out OUT/${c}_fold$f.json >> OUT/train.log 2>&1; "
+             "up \"$c fold $f\" >> OUT/upload.log 2>&1; done")
+    print(notebook("p3_v10_lines_a.ipynb", "Thử cửa sổ chia đôi + điểm từng dòng: fold 0 (A, C, B)", "p3-colab-v10-lines-a",
+                   LINES, "0", DOC_CHECK, "A100", code=True))
+    print(notebook("p3_v10_lines_b.ipynb", "Thử cửa sổ chia đôi + điểm từng dòng: fold 3 (A, C, B)", "p3-colab-v10-lines-b",
+                   LINES, "3", DOC_CHECK, "A100", code=True))
     print(notebook("p3_v10_attn_b.ipynb", "v10 seed 1 + attention: fold 3", "p3-colab-v10-attn-b", V10_ATTN, "3", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
