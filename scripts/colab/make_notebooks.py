@@ -74,6 +74,10 @@ if __name__ == "__main__":
     V10_S1 = V10.replace("--out", "--seed-start 1 --out")
     print(notebook("p3_v10_doc_s1_a.ipynb", "v10 soft seed 1: fold 0-2, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-s1-a", V10_S1, "0 1 2", DOC_CHECK, "A100"))
     print(notebook("p3_v10_doc_s1_b.ipynb", "v10 soft seed 1: fold 3-4, nhãn 2026-10-29b-doc", "p3-colab-v10-doc-s1-b", V10_S1, "3 4", DOC_CHECK, "A100"))
+    # 30/10: kiểm chứng attention có chỉ đúng đoạn log chứa dòng bằng chứng không -> lưu attention từng đoạn
+    V10_ATTN = V10_S1.replace("--out", "--save-repr --repr-train 500 --out")
+    print(notebook("p3_v10_attn_a.ipynb", "v10 seed 1 + attention: fold 0", "p3-colab-v10-attn-a", V10_ATTN, "0", DOC_CHECK, "A100"))
+    print(notebook("p3_v10_attn_b.ipynb", "v10 seed 1 + attention: fold 3", "p3-colab-v10-attn-b", V10_ATTN, "3", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
                    "--max-tokens 512 --window 1600 --out OUT/results_fold$f.json"))
