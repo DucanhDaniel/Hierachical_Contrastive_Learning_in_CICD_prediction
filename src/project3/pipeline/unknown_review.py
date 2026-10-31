@@ -7,6 +7,7 @@ AI hay dự đoán mô hình (C-02: người gán quyết định).
 
     python -m project3.pipeline.unknown_review sample --n 120      # -> data/human_labels/unknown_review/items.jsonl
     uv run --with openpyxl python -m project3.pipeline.unknown_review sheet   # -> docs/gan-run-chua-nhan-2026-10-31.xlsx
+    python -m project3.pipeline.unknown_review serve   # giao diện web http://localhost:8766 thay cho xlsx (unknown_review.html)
     uv run --with openpyxl python -m project3.pipeline.unknown_review eval "data/results/unknown/**/*.unknown.parquet"
 """
 import argparse
@@ -22,6 +23,7 @@ from project3.pipeline.leaf_review import CHOICES, HELP, LEAVES, batch_map
 RUN_DATASET = Path("data/run_dataset")
 DIR = Path("data/human_labels/unknown_review")
 ITEMS = DIR / "items.jsonl"
+LABELS = DIR / "labels.jsonl"
 XLSX = Path("docs/gan-run-chua-nhan-2026-10-31.xlsx")
 HUMAN = Path("data/human_labels")
 TOP = {"git": "moi_truong", "androidsdk": "moi_truong", "infra": "moi_truong", "network": "moi_truong",
@@ -119,19 +121,80 @@ def sheet() -> None:
     print(f"{len(items)} dòng -> {XLSX}")
 
 
+def current_labels() -> dict:
+    """stt -> bản ghi gán cuối cùng trong labels.jsonl (giao diện web)."""
+    out = {}
+    if LABELS.exists():
+        for line in LABELS.open(encoding="utf-8"):
+            if line.strip():
+                r = json.loads(line)
+                out[r["stt"]] = r
+    return out
+
+
+def serve(port: int, browser: bool = True) -> None:
+    """Giao diện gán trên máy: log đủ dòng (chữ đều), bấm dòng để đánh dấu dòng lỗi, chọn loại lỗi; mỗi lần lưu ghi thêm
+    một dòng vào labels.jsonl (lần cuối được tính)."""
+    import time
+    import webbrowser
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    items = [json.loads(l) for l in ITEMS.open(encoding="utf-8")]
+    page = (Path(__file__).with_suffix(".html").read_text(encoding="utf-8")
+            .replace("__CHOICES__", json.dumps(CHOICES)).replace("__HELP__", json.dumps(HELP, ensure_ascii=False)))
+
+    class Handler(BaseHTTPRequestHandler):
+        def reply(self, body: str, ctype: str) -> None:
+            b = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def do_GET(self):
+            if self.path.startswith("/api"):
+                self.reply(json.dumps({"items": items, "labels": current_labels()}, ensure_ascii=False), "application/json")
+            else:
+                self.reply(page, "text/html")
+
+        def do_POST(self):
+            r = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if r.get("leaf") not in CHOICES:
+                self.send_error(400)
+                return
+            r["time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            with LABELS.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            self.reply("{}", "application/json")
+
+        def log_message(self, *args):
+            pass
+
+    url = f"http://localhost:{port}"
+    print(f"{len(items)} run, đã gán {len(current_labels())} -> {url} (Ctrl+C để dừng; nhãn ghi vào {LABELS})", flush=True)
+    if browser:
+        webbrowser.open(url)
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+
+
 def evaluate(pattern: str) -> None:
-    """So nhãn người với dự đoán mô hình (gộp seed nếu có nhiều) và dòng lỗi người chọn với 5 dòng điểm cao nhất."""
-    from openpyxl import load_workbook
+    """So nhãn người với dự đoán mô hình (gộp seed nếu có nhiều) và dòng lỗi người chọn với 5 dòng điểm cao nhất.
+    Nhãn lấy từ labels.jsonl (giao diện web), chưa có thì từ bảng xlsx."""
     items = {json.loads(l)["stt"]: json.loads(l) for l in ITEMS.open(encoding="utf-8")}
+    if LABELS.exists():
+        given = [(k, v["leaf"], ",".join(map(str, v["lines"]))) for k, v in current_labels().items()]
+    else:
+        from openpyxl import load_workbook
+        given = [(r[0], r[7], r[8]) for r in load_workbook(XLSX).active.iter_rows(min_row=2, values_only=True)]
     rows = []
-    for r in load_workbook(XLSX).active.iter_rows(min_row=2, values_only=True):
-        human = (r[7] or "").strip().lower()
+    for stt, human, lines in given:
+        human = (human or "").strip().lower()
         if not human:
             continue
         if human not in CHOICES:
-            raise SystemExit(f"dòng {r[0]}: giá trị lạ {human!r}")
-        it = items[r[0]]
-        nums = [int(x) for x in str(r[8] or "").replace(";", ",").split(",") if x.strip().isdigit()]
+            raise SystemExit(f"dòng {stt}: giá trị lạ {human!r}")
+        it = items[stt]
+        nums = [int(x) for x in str(lines or "").replace(";", ",").split(",") if x.strip().isdigit()]
         ev = [it["lines"][k - 1].strip() for k in nums if 0 < k <= len(it["lines"])]
         rows.append({"run_id": it["run_id"], "human": human, "ev": ev, "batch": it["batch"]})
     df = pd.DataFrame(rows)
@@ -167,9 +230,12 @@ def evaluate(pattern: str) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["sample", "sheet", "eval"])
+    ap.add_argument("cmd", choices=["sample", "sheet", "serve", "eval"])
     ap.add_argument("preds", nargs="?", default="data/results/unknown/**/*.unknown.parquet")
     ap.add_argument("--n", type=int, default=120)
     ap.add_argument("--seed", type=int, default=31)
+    ap.add_argument("--port", type=int, default=8766)
+    ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    {"sample": lambda: sample(a.n, a.seed), "sheet": sheet, "eval": lambda: evaluate(a.preds)}[a.cmd]()
+    {"sample": lambda: sample(a.n, a.seed), "sheet": sheet, "serve": lambda: serve(a.port, not a.no_browser),
+     "eval": lambda: evaluate(a.preds)}[a.cmd]()
