@@ -21,6 +21,9 @@ T0 = time.time()
 FOLDS, VARIANTS, BUDGET_H, EXTRA = CONFIG["folds"], CONFIG["variants"], CONFIG["budget_h"], CONFIG["extra"]
 # mỗi phần tử folds: số fold, hoặc [fold, tên file kết quả, tham số thêm riêng lượt đó] (vd. seed khác nhau)
 RUNS = [(k, f"results_fold{k}", []) if isinstance(k, int) else tuple(k) for k in FOLDS]
+if "UNKNOWN_DIR" in EXTRA:  # gói run `?` (dataset p3-unknown-data, có unknown.json)
+    EXTRA = [os.path.dirname(glob.glob("/kaggle/input/**/unknown.json", recursive=True)[0]) if x == "UNKNOWN_DIR" else x
+             for x in EXTRA]
 src = os.path.dirname(glob.glob("/kaggle/input/**/label_tree.json", recursive=True)[0])
 # file .pyz, hoặc thư mục nếu Kaggle tự giải nén; có dataset p3-code (mã mới, 30/10) thì dùng bản đó
 code = sorted(glob.glob("/kaggle/input/**/project3_code.pyz*", recursive=True), key=lambda p: not p.startswith(src))[-1]

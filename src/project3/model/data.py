@@ -19,7 +19,8 @@ def load_pack(data: Path, chunks_file: str = "chunks.parquet"):
     chunks = {}
     for (rid, jid), g in ch.groupby(["run_id", "job_id"], sort=False):
         chunks.setdefault(rid, []).append(g.text.tolist())
-    return runs, chunks, LabelTree.load(data / "label_tree.json")
+    tree = data / "label_tree.json"  # gói run `?` (pack --unknown) không có cây
+    return runs, chunks, LabelTree.load(tree) if tree.exists() else None
 
 
 def val_fold(k: int) -> int:

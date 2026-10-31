@@ -9,6 +9,9 @@ này rồi chạy `python -m project3.model.train ...`.
 
     python -m project3.model.pack              # -> data/kaggle_log_ds/ (xoá và tạo lại; sau đó chạy model.tfidf --export-text)
     python -m project3.model.pack --code-only  # chỉ cập nhật project3_code.pyz, giữ dữ liệu
+    python -m project3.model.pack --unknown    # -> data/kaggle_unknown_ds/: run quy tắc để `?` (leaf `?`, không có dòng
+                                               #    bằng chứng), cùng cách chọn đoạn; dataset p3-unknown-data, dùng với
+                                               #    model.train --unknown (31/10/2026)
 """
 import argparse
 import json
@@ -21,6 +24,8 @@ from pathlib import Path
 import pandas as pd
 
 from .config import PACK, RUN_DATASET
+
+UNKNOWN = Path("data/kaggle_unknown_ds")
 from .labels import LabelTree, leaf_of
 
 MAX_CHUNKS = 8
@@ -56,7 +61,8 @@ def _diff_row(args):
     return diff_features(*args)
 
 
-def build_data(ds: Path) -> None:
+def build_data(ds: Path, unknown: bool = False) -> None:
+    """unknown: chỉ run quy tắc để `?`; không ghi cây nhãn (mô hình dùng cây của gói chính) mà ghi unknown.json."""
     import duckdb
     from concurrent.futures import ProcessPoolExecutor
     from project3.crawl.build_log_labels import GROUP as RULE_GROUP
@@ -66,7 +72,8 @@ def build_data(ds: Path) -> None:
     from .text import clip_chunk, mask_text
     runs = duckdb.sql(f"""SELECT run_id, repository, repo_fold, split_time, workflow, failed_job_names, label_l2, label_l3,
                                  evidence, diff_ok, diff_path, event, failed_jobs FROM '{RUN_DATASET / "runs.parquet"}'
-                          WHERE label_l2 IN ({",".join(repr(k) for k in RULE_GROUP)}) AND log_jobs > 0""").df()
+                          WHERE {"label_l2 = '?'" if unknown else
+                                 f"label_l2 IN ({','.join(repr(k) for k in RULE_GROUP)})"} AND log_jobs > 0""").df()
     runs = runs.drop_duplicates("run_id").reset_index(drop=True)
     runs["key"] = [clean(e)[:120].strip() for e in runs.evidence.fillna("")]
     key = dict(zip(runs.run_id, runs.key))
@@ -99,7 +106,7 @@ def build_data(ds: Path) -> None:
             keep[mode] += [{"run_id": run_id, "job_id": r.job_id, "chunk_idx": r.chunk_idx,
                             "text": r.text[-MAX_CHUNK_CHARS:]} for r in rows]
     runs["failed_steps"] = runs.run_id.map(steps).fillna("")
-    runs["leaf"] = [leaf_of(a, b) for a, b in zip(runs.label_l3, runs.label_l2)]
+    runs["leaf"] = "?" if unknown else [leaf_of(a, b) for a, b in zip(runs.label_l3, runs.label_l2)]
     with ProcessPoolExecutor(8) as ex:
         diff = list(ex.map(_diff_row, [(p if ok else None, e) for p, ok, e in zip(runs.diff_path, runs.diff_ok, runs.event)],
                            chunksize=200))
@@ -107,10 +114,15 @@ def build_data(ds: Path) -> None:
                   "struct_masked": [sf_masked.get(r, [0.0] * len(STRUCT_NAMES)) for r in runs.run_id],
                   "diff": diff}).to_parquet(ds / "features.parquet", index=False)
     (ds / "features.json").write_text(json.dumps({"struct": STRUCT_NAMES, "diff": DIFF_NAMES}), encoding="utf-8")
-    tree = LabelTree.build(GROUP, PARENT, runs.leaf.value_counts().to_dict(), MIN_LEAF)
     runs.drop(columns=["evidence", "label_l3", "diff_path"]).to_parquet(ds / "runs.parquet", index=False)
     pd.DataFrame(keep["error"]).to_parquet(ds / "chunks.parquet", index=False, compression="zstd")
     pd.DataFrame(keep["tail"]).to_parquet(ds / "chunks_tail.parquet", index=False, compression="zstd")
+    if unknown:
+        (ds / "unknown.json").write_text(json.dumps({"runs": len(runs), "by_fold": runs.repo_fold.value_counts().to_dict()}),
+                                         encoding="utf-8")
+        print(f"{len(runs)} run `?`; theo fold {runs.repo_fold.value_counts().sort_index().to_dict()}")
+        return
+    tree = LabelTree.build(GROUP, PARENT, runs.leaf.value_counts().to_dict(), MIN_LEAF)
     (ds / "label_tree.json").write_text(json.dumps(tree.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8")
     n, nk = len(runs), int((runs.key != "").sum())
     cov = {m: {"đoạn có bằng chứng": round(a / n, 4), "bằng chứng trong cửa sổ đọc": round(b / max(nk, 1), 4)}
@@ -120,7 +132,15 @@ def build_data(ds: Path) -> None:
     print("tỉ lệ run giữ được bằng chứng:", json.dumps(cov, ensure_ascii=False))
 
 
-def main(ds: Path = PACK, code_only: bool = False) -> None:
+def main(ds: Path = PACK, code_only: bool = False, unknown: bool = False) -> None:
+    if unknown:
+        ds = UNKNOWN
+        shutil.rmtree(ds, ignore_errors=True)
+        ds.mkdir(parents=True)
+        build_data(ds, unknown=True)
+        (ds / "dataset-metadata.json").write_text(json.dumps(
+            {"title": "p3-unknown-data", "id": "ducanhpham2k5/p3-unknown-data", "licenses": [{"name": "other"}]}))
+        return
     if not code_only:
         if ds.exists():
             shutil.rmtree(ds)
@@ -138,5 +158,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=PACK)
     ap.add_argument("--code-only", action="store_true")
+    ap.add_argument("--unknown", action="store_true", help="gói riêng các run `?` (data/kaggle_unknown_ds)")
     a = ap.parse_args()
-    main(a.out, a.code_only)
+    main(a.out, a.code_only, a.unknown)

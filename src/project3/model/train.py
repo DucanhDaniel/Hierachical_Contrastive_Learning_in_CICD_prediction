@@ -15,6 +15,10 @@ cùng lá 1, anh em SIB_W), `proxy` (+ contrastive theo nguyên mẫu phân cấ
   --window-mode split  cửa sổ = nửa quanh dòng lỗi đầu + nửa quanh dòng lỗi cuối (mặc định `last`: quanh dòng lỗi cuối)
   --line-attn      gom token theo dòng, attention trên dòng -> điểm từng dòng (lưu 5 dòng cao nhất khi --save-repr)
   --ev-loss λ      + λ × (-log tổng trọng số các dòng chứa dòng bằng chứng của quy tắc), chỉ run không bị che
+  --unknown DIR    gói run `?` (model.pack --unknown): dự đoán các run `?` của repo thuộc fold test (mô hình chưa thấy repo
+                   đó), lưu {out}.unknown.parquet (+ attn, 5 dòng điểm cao nhất khi --save-repr)
+  --save-model     lưu weight của epoch tốt nhất, chỉ phần không đóng băng (fp16): {out}.model_{variant}{seed}.pt; nạp lại
+                   bằng LogNet(...).load_state_dict(torch.load(...), strict=False) (phần đóng băng lấy từ encoder gốc)
   --views 2        mỗi run hai góc nhìn (giữ ngẫu nhiên --view-keep đoạn, che độc lập); CE học cả hai, soft/hcl thêm
                    InfoNCE coi hai góc nhìn của cùng run là cặp dương
 Che bằng chứng: với xác suất --mask-p, xoá mọi dòng chứa dòng bằng chứng trước khi mã hoá. Chọn epoch theo macro-F1 tầng 2
@@ -91,20 +95,22 @@ def load_tfidf(path: Path, runs: pd.DataFrame) -> dict:
     return {False: np.stack(tf.full.values).astype(np.float32), True: np.stack(tf.masked.values).astype(np.float32)}
 
 
-def load_feats(path: Path, runs: pd.DataFrame, which: str, tr: np.ndarray) -> dict:
-    """Đặc trưng có cấu trúc theo thứ tự runs, chuẩn hoá theo trung bình / độ lệch của tập train.
-    which: struct | diff | all. Bản che dùng struct tính trên log đã che (diff không phụ thuộc che)."""
+def load_feats(path: Path, runs: pd.DataFrame, which: str, tr: np.ndarray, norm=None):
+    """Đặc trưng có cấu trúc theo thứ tự runs, chuẩn hoá theo trung bình / độ lệch của tập train (hoặc norm có sẵn).
+    which: struct | diff | all. Bản che dùng struct tính trên log đã che (diff không phụ thuộc che).
+    Trả về (đặc trưng, (trung bình, độ lệch))."""
     f = pd.read_parquet(path).drop_duplicates("run_id").set_index("run_id").reindex(runs.run_id)
     assert not f["diff"].isna().any(), "thiếu đặc trưng cho một số run"
     out = {}
     for m, col in ((False, "struct_full"), (True, "struct_masked")):
         parts = ([np.stack(f[col].values)] if which in ("struct", "all") else []) +                 ([np.stack(f["diff"].values)] if which in ("diff", "all") else [])
         out[m] = np.concatenate(parts, 1).astype(np.float32)
-    mu, sd = out[False][tr].mean(0), out[False][tr].std(0) + 1e-6
-    return {m: ((x - mu) / sd).astype(np.float32) for m, x in out.items()}
+    mu, sd = norm or (out[False][tr].mean(0), out[False][tr].std(0) + 1e-6)
+    return {m: ((x - mu) / sd).astype(np.float32) for m, x in out.items()}, (mu, sd)
 
 
-def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict:
+def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown: Fold = None,
+                out_unknown: list = None) -> dict:
     import torch
     import torch.nn.functional as F
     from .nn.losses import MemoryBank, class_weights, hcl_loss, instance_nce, proxy_loss, soft_supcon_mem
@@ -133,11 +139,11 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     autocast = lambda: torch.autocast(dev, dtype=torch.float16, enabled=dev == "cuda")
 
-    def forward(rows, masked, keep=False, drop=None):
-        texts, c2j, j2r, pos = fold.inputs(rows, masked, drop)
-        tf = np.stack([fold.tfidf[bool(m)][x] for x, m in zip(rows, masked)]) if fold.tfidf else None
-        ft = np.stack([fold.feats[bool(m)][x] for x, m in zip(rows, masked)]) if fold.feats else None
-        out = net(texts, c2j, j2r, len(rows), [fold.ctx[x] for x in rows], tf, max_tokens=a.max_tokens, keep=keep, ft=ft)
+    def forward(rows, masked, keep=False, drop=None, f=fold):
+        texts, c2j, j2r, pos = f.inputs(rows, masked, drop)
+        tf = np.stack([f.tfidf[bool(m)][x] for x, m in zip(rows, masked)]) if f.tfidf else None
+        ft = np.stack([f.feats[bool(m)][x] for x, m in zip(rows, masked)]) if f.feats else None
+        out = net(texts, c2j, j2r, len(rows), [f.ctx[x] for x in rows], tf, max_tokens=a.max_tokens, keep=keep, ft=ft)
         return out, pos, texts
 
     def evidence_lines(rows, masked, pos, texts, extra):
@@ -153,7 +159,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
                 tgt.setdefault(k, []).append(g)
         return tgt
 
-    def predict(rows, masked, keep=False):
+    def predict(rows, masked, keep=False, f=fold):
         """-> (lá dự đoán, log xác suất 3 tầng, attention từng đoạn (JSON) hoặc None, z hoặc None,
         5 dòng điểm cao nhất mỗi run (JSON [(job, đoạn, dòng, trọng số, nội dung)]) khi keep + --line-attn, hoặc None)."""
         net.eval()
@@ -161,7 +167,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
         with torch.no_grad(), autocast():
             for i in range(0, len(rows), a.eval_batch):
                 b = rows[i:i + a.eval_batch]
-                (o1, o2, o3, _, extra), pos, texts = forward(b, [masked] * len(b), keep)
+                (o1, o2, o3, _, extra), pos, texts = forward(b, [masked] * len(b), keep, f=f)
                 p, lp = decode(o1, o2, o3, tree, flat=a.flat)
                 preds += p
                 lps.append(lp)
@@ -244,6 +250,10 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
         if sv > best:
             best, best_state = sv, {k: v.detach().to("cpu", copy=True) for k, v in net.state_dict().items()}
     net.load_state_dict(best_state)
+    if a.save_model:
+        frozen = {n for n, p in net.named_parameters() if not p.requires_grad}
+        torch.save({k: v.half() if v.is_floating_point() else v for k, v in best_state.items() if k not in frozen},
+                   Path(a.out).with_suffix(f".model_{variant}{seed}.pt"))
 
     res = {}
     for name, m in (("full", False), ("masked", True)):
@@ -258,6 +268,16 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list) -> dict
         out_preds.append(df)
         print(f"  {variant} test {name}: macro-F1 lá {res[name]['macroF1_l3']:.3f} tầng 2 {res[name]['macroF1_l2']:.3f} "
               f"tầng 1 {res[name]['macroF1_l1']:.3f}", flush=True)
+    if unknown is not None:  # run `?` của các repo thuộc fold test
+        p, lp, attn, z, lines = predict(unknown.te, False, keep=a.save_repr, f=unknown)
+        df = pd.DataFrame({"variant": variant, "seed": seed, "test": "unknown", "run_id": unknown.runs.run_id.values[unknown.te],
+                           "pred": p, "logp": list(lp)})
+        if a.save_repr:
+            df["attn"] = attn
+            if lines is not None:
+                df["lines"] = lines
+        out_unknown.append(df)
+        print(f"  {variant} run `?`: {len(p)} run, dự đoán {pd.Series(p).value_counts().head(6).to_dict()}", flush=True)
     if a.save_repr:  # z của một phần tập train (log nguyên vẹn) cho kNN / truy hồi / định tuyến
         sub = np.random.default_rng(seed).permutation(tr)[:a.repr_train]
         p, _, _, z, _ = predict(sub, False, keep=True)
@@ -280,16 +300,30 @@ def main(a) -> None:
     tr, va, te = fold_split(runs.repo_fold.values, a.fold)
     va = np.random.default_rng(0).permutation(va)
     tfidf = load_tfidf((a.tfidf_dir or a.data) / f"tfidf_fold{a.fold}.parquet", runs) if a.tfidf else None
-    feats = load_feats(a.data / "features.parquet", runs, a.feats, tr) if a.feats != "none" else None
-    fold = Fold(runs, chunks, tree, tr, va, te, tfidf, feats, partial(focus_window, n=a.window, mode=a.window_mode) if a.chunks == "error" else clip_chunk)
+    feats, norm = load_feats(a.data / "features.parquet", runs, a.feats, tr) if a.feats != "none" else (None, None)
+    clip = partial(focus_window, n=a.window, mode=a.window_mode) if a.chunks == "error" else clip_chunk
+    fold = Fold(runs, chunks, tree, tr, va, te, tfidf, feats, clip)
+    unknown = None
+    if a.unknown:
+        assert not a.tfidf and a.chunks == "error", "--unknown chỉ hỗ trợ cấu hình chính (khối log lỗi, không TF-IDF)"
+        uruns, uchunks, _ = load_pack(a.unknown)
+        uruns = uruns[uruns.repo_fold == a.fold].reset_index(drop=True)
+        if a.smoke:
+            uruns = uruns.head(60)
+        uf = load_feats(a.unknown / "features.parquet", uruns, a.feats, None, norm)[0] if feats else None
+        empty = np.array([], dtype=int)
+        unknown = Fold(uruns, uchunks, tree, empty, empty, np.arange(len(uruns)), None, uf, clip)
+        print(f"run `?` của fold {a.fold}: {len(uruns)}", flush=True)
     print(f"fold {a.fold}: train {len(tr)}, val {len(va)} (dùng {min(len(va), a.val_max)}), test {len(te)} run", flush=True)
-    results, preds = {"args": {k: str(v) for k, v in vars(a).items()}, "tree": tree.to_dict()}, []
+    results, preds, out_unknown = {"args": {k: str(v) for k, v in vars(a).items()}, "tree": tree.to_dict()}, [], []
     for variant in a.variants:
         for seed in range(a.seed_start, a.seed_start + a.seeds):
-            results[f"{variant}_seed{seed}"] = run_variant(fold, variant, seed, a, preds)
+            results[f"{variant}_seed{seed}"] = run_variant(fold, variant, seed, a, preds, unknown, out_unknown)
             Path(a.out).write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     if preds:
         pd.concat(preds).to_parquet(Path(a.out).with_suffix(".preds.parquet"), index=False)
+    if out_unknown:
+        pd.concat(out_unknown).to_parquet(Path(a.out).with_suffix(".unknown.parquet"), index=False)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -331,6 +365,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--save-repr", action="store_true", help="lưu attention từng đoạn + z (test) và z của tập train")
     ap.add_argument("--repr-train", type=int, default=10000, help="số run train lưu z")
     ap.add_argument("--tfidf-dir", type=Path, default=None, help="thư mục tfidf_fold{k}.parquet (mặc định --data)")
+    ap.add_argument("--save-model", action="store_true", help="lưu weight epoch tốt nhất (phần không đóng băng, fp16)")
+    ap.add_argument("--unknown", type=Path, default=None, help="gói run `?` (model.pack --unknown): dự đoán run `?` của fold test")
     ap.add_argument("--out", default="results.json")
     return ap
 
