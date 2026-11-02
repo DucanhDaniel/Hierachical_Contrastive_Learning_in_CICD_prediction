@@ -6,6 +6,7 @@ cửa sổ mô hình đọc; các dòng được đánh số để người gán
 AI hay dự đoán mô hình (C-02: người gán quyết định).
 
     python -m project3.pipeline.unknown_review sample --n 120      # -> data/human_labels/unknown_review/items.jsonl
+    python -m project3.pipeline.unknown_review sample2 --n 120 --non-build 30   # vòng 2 (02/11), nối vào items.jsonl
     uv run --with openpyxl python -m project3.pipeline.unknown_review sheet   # -> docs/gan-run-chua-nhan-2026-10-31.xlsx
     python -m project3.pipeline.unknown_review serve   # giao diện web http://localhost:8766 thay cho xlsx (unknown_review.html)
     uv run --with openpyxl python -m project3.pipeline.unknown_review eval "data/results/unknown/**/*.unknown.parquet"
@@ -76,6 +77,49 @@ def sample(n: int, seed: int) -> None:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     print(f"{len(s)} run `?` từ {s.repository.nunique()} repo -> {ITEMS}")
     print(s.batch.value_counts().to_dict(), s.event.value_counts().to_dict())
+
+
+def sample2(n: int, n_nb: int, seed: int) -> None:
+    """Vòng 2 (02/11/2026): thêm n run `?` rút như vòng 1 (thêm nhãn để đo ngưỡng / MC Dropout chắc hơn) + n_nb run mà bộ
+    lọc non_build (model.abstain) bắt (kiểm tra bộ lọc có bắt nhầm lỗi build thật không). Hai phần trộn ngẫu nhiên, nối
+    tiếp stt của vòng 1; phần nào được rút vì bộ lọc chỉ ghi ở round2_key.json (giao diện không đọc) để người gán vẫn mù."""
+    import duckdb
+    import numpy as np
+    from project3.model.abstain import UNK, non_build
+    old = [json.loads(l) for l in ITEMS.open(encoding="utf-8")]
+    assert not any(it.get("round") == 2 for it in old), "đã có vòng 2"
+    runs = pd.read_parquet(RUN_DATASET / "runs.parquet",
+                           columns=["run_id", "repository", "workflow", "label_l2", "log_jobs", "repo_fold", "event"])
+    meta = pd.read_parquet(UNK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")  # run `?` có dự đoán mô hình
+    runs = runs[(runs.label_l2 == "?") & (runs.log_jobs > 0) & runs.run_id.isin(meta.index)
+                & ~runs.run_id.isin(labelled_before() | {it["run_id"] for it in old})].drop_duplicates("run_id")
+    m = meta.reindex(runs.run_id)
+    runs["nb"] = [non_build(j, s, k) for j, s, k in zip(m.failed_job_names, m.failed_steps, m.failed_jobs.fillna(1))]
+    rnd = runs.sample(frac=1, random_state=seed).groupby("repository").head(2).head(n)
+    rest = runs[(runs.nb != "") & ~runs.run_id.isin(rnd.run_id)]
+    nb = rest.sample(frac=1, random_state=seed + 1).groupby("repository").head(2).head(n_nb)
+    s = pd.concat([rnd.assign(pick="random"), nb.assign(pick="non_build")]).sample(frac=1, random_state=seed + 2)
+    s = s.reset_index(drop=True)
+    s["batch"] = s.repository.map(batch_map(s.repository.unique()))
+    ids = ",".join(str(i) for i in s.run_id)
+    ch = duckdb.sql(f"""SELECT run_id, job_id, chunk_idx, job_name, failed_steps, step_header, text
+                        FROM '{(RUN_DATASET / "chunks.parquet").as_posix()}' WHERE run_id IN ({ids})
+                        ORDER BY run_id, job_id, chunk_idx""").df()
+    start = max(it["stt"] for it in old) + 1
+    key = {}
+    with ITEMS.open("a", encoding="utf-8") as f:
+        for i, r in enumerate(s.itertuples(), start):
+            c = ch[ch.run_id == r.run_id]
+            item = {"stt": i, "run_id": int(r.run_id), "repo": r.repository, "workflow": r.workflow, "fold": int(r.repo_fold),
+                    "batch": r.batch, "event": r.event, "jobs": " | ".join(dict.fromkeys(c.job_name))[:300],
+                    "failed_steps": " | ".join(dict.fromkeys(x for v in c.failed_steps for x in v.split(" | ") if x))[:300],
+                    "lines": excerpt(c) if len(c) else [], "round": 2}
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+            key[i] = {"pick": r.pick, "non_build_rule": r.nb}
+    (DIR / "round2_key.json").write_text(json.dumps(key, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"vòng 2: {len(s)} run (ngẫu nhiên {len(rnd)}, trong đó bộ lọc bắt {int((rnd.nb != '').sum())}; "
+          f"rút vì bộ lọc {len(nb)}) từ {s.repository.nunique()} repo, stt {start}–{start + len(s) - 1}")
+    print(s.batch.value_counts().to_dict(), nb.nb.value_counts().to_dict(), f"pool bộ lọc {len(rest)} run")
 
 
 def sheet() -> None:
@@ -230,12 +274,13 @@ def evaluate(pattern: str) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["sample", "sheet", "serve", "eval"])
+    ap.add_argument("cmd", choices=["sample", "sample2", "sheet", "serve", "eval"])
     ap.add_argument("preds", nargs="?", default="data/results/unknown/**/*.unknown.parquet")
     ap.add_argument("--n", type=int, default=120)
+    ap.add_argument("--non-build", type=int, default=30, help="sample2: số run rút vì bộ lọc non_build")
     ap.add_argument("--seed", type=int, default=31)
     ap.add_argument("--port", type=int, default=8766)
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    {"sample": lambda: sample(a.n, a.seed), "sheet": sheet, "serve": lambda: serve(a.port, not a.no_browser),
+    {"sample": lambda: sample(a.n, a.seed), "sample2": lambda: sample2(a.n, a.non_build, a.seed), "sheet": sheet, "serve": lambda: serve(a.port, not a.no_browser),
      "eval": lambda: evaluate(a.preds)}[a.cmd]()

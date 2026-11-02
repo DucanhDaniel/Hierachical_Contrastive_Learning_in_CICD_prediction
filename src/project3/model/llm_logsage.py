@@ -13,9 +13,13 @@ Hai chỗ KHÁC paper (phải ghi khi báo cáo):
 
 Tập chấm: `human` = run có nhãn lá của người (vòng 161 + vòng mù 46, bỏ unclear/non_build), log nguyên vẹn;
 `model` = PER_LEAF run/lá từ gói dữ liệu, log nguyên vẹn và đã che bằng chứng.
+`--unknown` (02/11/2026): thay bằng 120 run quy tắc để `?` người gán (pipeline.unknown_review, vòng 1), chỉ lưu dự
+đoán; nhãn người (gán mù / sau rà lại) chấm ở scripts/analysis/baseline_report.py.
 
     python -m project3.model.llm_logsage prepare --budget 40000   # -> data/results/llm_logsage/{sample.parquet, ds/}
     python -m project3.model.llm_logsage score DIR                # DIR = thư mục `kaggle b t download`
+    python -m project3.model.llm_logsage prepare --unknown         # -> data/results/llm_logsage/unknown120/
+    python -m project3.model.llm_logsage score DIR --unknown
 """
 import argparse
 import json
@@ -27,6 +31,8 @@ import numpy as np
 import pandas as pd
 
 from .config import PACK
+from .abstain import UNK
+from project3.pipeline.unknown_review import ITEMS
 from .data import job_texts
 from .labels import GROUP, PARENT
 from .metrics import hier_scores
@@ -90,17 +96,23 @@ def human_labels() -> pd.DataFrame:
     return pd.DataFrame(rows).drop_duplicates("run_id")
 
 
-def prepare(budget: int) -> None:
-    (OUT / "ds").mkdir(parents=True, exist_ok=True)
-    runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
-    hum = human_labels()
-    hum = hum[hum.run_id.isin(runs.index)].assign(set="human", test="full", key="")
-    rng = np.random.default_rng(SEED)
-    r = runs.reset_index()
-    pick = pd.concat([g.iloc[rng.permutation(len(g))[:PER_LEAF]] for _, g in r.groupby("leaf")])
-    model = pd.concat([pd.DataFrame({"run_id": pick.run_id, "gold_leaf": pick.leaf, "round": "", "set": "model",
-                                     "test": t, "key": pick.key.fillna("")}) for t in ("full", "masked")])
-    df = pd.concat([hum, model], ignore_index=True)
+def prepare(budget: int, unknown: bool = False) -> None:
+    out = OUT / "unknown120" if unknown else OUT
+    (out / "ds").mkdir(parents=True, exist_ok=True)
+    if unknown:
+        runs = pd.read_parquet(UNK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
+        ids = [it["run_id"] for it in map(json.loads, ITEMS.open(encoding="utf-8")) if it.get("round", 1) == 1]
+        df = pd.DataFrame({"run_id": ids, "gold_leaf": "", "round": "", "set": "unknown", "test": "full", "key": ""})
+    else:
+        runs = pd.read_parquet(PACK / "runs.parquet").drop_duplicates("run_id").set_index("run_id")
+        hum = human_labels()
+        hum = hum[hum.run_id.isin(runs.index)].assign(set="human", test="full", key="")
+        rng = np.random.default_rng(SEED)
+        r = runs.reset_index()
+        pick = pd.concat([g.iloc[rng.permutation(len(g))[:PER_LEAF]] for _, g in r.groupby("leaf")])
+        model = pd.concat([pd.DataFrame({"run_id": pick.run_id, "gold_leaf": pick.leaf, "round": "", "set": "model",
+                                         "test": t, "key": pick.key.fillna("")}) for t in ("full", "masked")])
+        df = pd.concat([hum, model], ignore_index=True)
     jobs = job_texts(f"run_id IN ({','.join(map(str, df.run_id.unique()))})")
     df = df[df.run_id.isin(jobs)].copy()
     df["log"] = [logsage_filter("\n".join(mask_text(t, k) if s == "masked" else t for t in jobs[rid]), budget)
@@ -108,17 +120,19 @@ def prepare(budget: int) -> None:
     df["context"] = [f"workflow: {runs.workflow.get(x, '')} | job: {runs.failed_job_names.get(x, '')} | "
                      f"step: {runs.failed_steps.get(x, '')}" for x in df.run_id]
     df["row_id"] = [f"{s}|{t}|{x}" for s, t, x in zip(df["set"], df.test, df.run_id)]
-    df.to_parquet(OUT / "sample.parquet", index=False)
-    df[["row_id", "context", "log"]].to_json(OUT / "ds" / "sample.jsonl", orient="records", lines=True, force_ascii=False)
-    (OUT / "ds" / "dataset-metadata.json").write_text(json.dumps(
-        {"title": "p3-llm-logsage", "id": "ducanhpham2k5/p3-llm-logsage", "licenses": [{"name": "other"}]}))
+    df.to_parquet(out / "sample.parquet", index=False)
+    df[["row_id", "context", "log"]].to_json(out / "ds" / "sample.jsonl", orient="records", lines=True, force_ascii=False)
+    slug = "p3-llm-unknown120" if unknown else "p3-llm-logsage"
+    (out / "ds" / "dataset-metadata.json").write_text(json.dumps(
+        {"title": slug, "id": f"ducanhpham2k5/{slug}", "licenses": [{"name": "other"}]}))
     chars = df.log.str.len() + df.context.str.len() + 3500  # + hướng dẫn trong prompt
     print(df.groupby(["set", "test"]).size().to_dict(), f"| {len(df)} lời gọi | ký tự log TB {int(df.log.str.len().mean())}"
           f" | ước tính token vào ~{int(chars.sum() / 3.5):,}")
 
 
-def score(d: Path) -> None:
-    s = pd.read_parquet(OUT / "sample.parquet")
+def score(d: Path, unknown: bool = False) -> None:
+    out = OUT / "unknown120" if unknown else OUT
+    s = pd.read_parquet(out / "sample.parquet")
     pred = {}
     for f in d.rglob("*.run.json"):
         j = json.loads(f.read_text(encoding="utf-8"))
@@ -130,6 +144,10 @@ def score(d: Path) -> None:
     s["pred"] = s.row_id.map(pred)
     print(f"có dự đoán: {s.pred.notna().sum()}/{len(s)}; unknown: {(s.pred == 'unknown').sum()}")
     s = s[s.pred.notna()]
+    if unknown:  # chưa có nhãn trong sample: chỉ lưu dự đoán
+        s.drop(columns=["log"]).to_parquet(out / "preds.parquet", index=False)
+        print(s.pred.value_counts().to_dict())
+        return
     rows = []
     for (st, t), g in s.groupby(["set", "test"]):
         sc = hier_scores(g.gold_leaf.tolist(), g.pred.tolist(), PARENT, GROUP)
@@ -147,6 +165,9 @@ if __name__ == "__main__":
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("prepare")
     p.add_argument("--budget", type=int, default=40_000, help="số ký tự tối đa sau lọc (paper: 22.000 token)")
-    sub.add_parser("score").add_argument("dir", type=Path)
+    p.add_argument("--unknown", action="store_true", help="120 run `?` người gán thay cho tập chấm thường")
+    q = sub.add_parser("score")
+    q.add_argument("dir", type=Path)
+    q.add_argument("--unknown", action="store_true")
     a = ap.parse_args()
-    prepare(a.budget) if a.cmd == "prepare" else score(a.dir)
+    prepare(a.budget, a.unknown) if a.cmd == "prepare" else score(a.dir, a.unknown)

@@ -19,6 +19,9 @@ cùng lá 1, anh em SIB_W), `proxy` (+ contrastive theo nguyên mẫu phân cấ
                    đó), lưu {out}.unknown.parquet (+ attn, 5 dòng điểm cao nhất khi --save-repr)
   --save-model     lưu weight của epoch tốt nhất, chỉ phần không đóng băng (fp16): {out}.model_{variant}{seed}.pt; nạp lại
                    bằng LogNet(...).load_state_dict(torch.load(...), strict=False) (phần đóng băng lấy từ encoder gốc)
+  --load-model P   nạp weight đã lưu (mẫu đường dẫn có {fold}, {seed}) thay cho train, rồi đánh giá như thường
+  --mc T           MC Dropout: bật dropout lúc dự đoán, đoán lại T lần -> {out}.mc_{variant}{seed}.parquet (lá đa số,
+                   tỉ lệ đồng thuận, entropy, mutual information) cho run `?` (--mc-ids) và --mc-sub run test có nhãn
   --views 2        mỗi run hai góc nhìn (giữ ngẫu nhiên --view-keep đoạn, che độc lập); CE học cả hai, soft/hcl thêm
                    InfoNCE coi hai góc nhìn của cùng run là cặp dương
 Che bằng chứng: với xác suất --mask-p, xoá mọi dòng chứa dòng bằng chứng trước khi mã hoá. Chọn epoch theo macro-F1 tầng 2
@@ -212,7 +215,12 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
                 hard[tree.l3.index(x), tree.l3.index(y)] = hard[tree.l3.index(y), tree.l3.index(x)] = True
     best, best_state, t0, step = -1.0, None, time.time(), 0
     va_eval = va[: a.val_max]
-    for ep in range(a.epochs):
+    if a.load_model:  # nạp weight đã lưu (--save-model), bỏ qua train; phần đóng băng lấy từ encoder gốc
+        sd = torch.load(a.load_model.format(fold=a.fold, seed=seed), map_location="cpu")
+        miss = net.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in sd.items()}, strict=False)
+        assert not miss.unexpected_keys, miss.unexpected_keys
+        best_state = {k: v.detach().to("cpu", copy=True) for k, v in net.state_dict().items()}
+    for ep in range(0 if a.load_model else a.epochs):
         net.train()
         for b in (sampler(rng, a.batch) if sampler else random_batches(rng, tr, a.batch)):
             b = list(b) * a.views  # --views 2: mỗi run hai góc nhìn (đoạn giữ ngẫu nhiên + che độc lập), CE học cả hai
@@ -250,7 +258,7 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
         if sv > best:
             best, best_state = sv, {k: v.detach().to("cpu", copy=True) for k, v in net.state_dict().items()}
     net.load_state_dict(best_state)
-    if a.save_model:
+    if a.save_model and not a.load_model:
         frozen = {n for n, p in net.named_parameters() if not p.requires_grad}
         torch.save({k: v.half() if v.is_floating_point() else v for k, v in best_state.items() if k not in frozen},
                    Path(a.out).with_suffix(f".model_{variant}{seed}.pt"))
@@ -278,6 +286,52 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
                 df["lines"] = lines
         out_unknown.append(df)
         print(f"  {variant} run `?`: {len(p)} run, dự đoán {pd.Series(p).value_counts().head(6).to_dict()}", flush=True)
+    if a.mc:  # MC Dropout (Gal & Ghahramani 2016): bật dropout lúc dự đoán, đoán lại a.mc lần, đo độ đồng thuận
+        n12 = len(tree.l1) + len(tree.l2)
+
+        def mc_predict(rows, masked, f):
+            net.train()  # chỉ để bật dropout; không cập nhật weight (no_grad), mô hình không có BatchNorm
+            votes, probs = [], []
+            with torch.no_grad(), autocast():
+                for _ in range(a.mc):
+                    pr, lp3 = [], []
+                    for i in range(0, len(rows), a.eval_batch):
+                        b = rows[i:i + a.eval_batch]
+                        (o1, o2, o3, _, _), _, _ = forward(b, [masked] * len(b), f=f)
+                        p, lp = decode(o1, o2, o3, tree, flat=a.flat)
+                        pr += p
+                        lp3.append(lp[:, n12:].astype(np.float32))
+                    votes.append(pr)
+                    probs.append(np.exp(np.concatenate(lp3)))
+            net.eval()
+            votes, probs = np.array(votes).T, np.stack(probs, 1)  # (run, lần), (run, lần, lá)
+            probs /= probs.sum(-1, keepdims=True)
+            mean = probs.mean(1)
+            ent = lambda q: -(q * np.log(q + 1e-12)).sum(-1)
+            out = []
+            for v, pp, m, e, mi in zip(votes, probs, mean, ent(mean), ent(mean) - ent(probs).mean(1)):
+                cnt = pd.Series(v).value_counts()
+                out.append(dict(mc_pred=cnt.index[0], mc_agree=cnt.iloc[0] / a.mc,
+                                mc_votes=json.dumps({k: int(x) for k, x in cnt.items()}),
+                                mc_seq=json.dumps(v.tolist()),  # lá từng lần + xác suất lá từng lần: đo độ nhạy theo số lần
+                                mc_probs=pp.astype(np.float16).ravel().tolist(),
+                                mc_pmean=float(m[tree.l3.index(cnt.index[0])]) if cnt.index[0] in tree.l3 else 0.0,
+                                mc_entropy=float(e), mc_mi=float(mi)))
+            return out
+
+        parts = []
+        if unknown is not None:
+            ids = set(json.loads(Path(a.mc_ids).read_text())) if a.mc_ids else None
+            rows = [i for i in unknown.te if ids is None or unknown.runs.run_id.values[i] in ids]
+            if rows:
+                parts.append(pd.DataFrame(mc_predict(rows, False, unknown)).assign(
+                    test="unknown", run_id=unknown.runs.run_id.values[rows]))
+        sub = np.sort(np.random.default_rng(seed).permutation(te)[:a.mc_sub])  # mẫu tập test có nhãn quy tắc
+        for name, m in (("full", False), ("masked", True)):
+            parts.append(pd.DataFrame(mc_predict(sub, m, fold)).assign(test=name, run_id=runs.run_id.values[sub]))
+        mc = pd.concat(parts).assign(variant=variant, seed=seed, passes=a.mc)
+        mc.to_parquet(Path(a.out).with_suffix(f".mc_{variant}{seed}.parquet"), index=False)
+        print(f"  {variant} MC Dropout {a.mc} lần: {len(mc)} dòng, đồng thuận TB {mc.mc_agree.mean():.3f}", flush=True)
     if a.save_repr:  # z của một phần tập train (log nguyên vẹn) cho kNN / truy hồi / định tuyến
         sub = np.random.default_rng(seed).permutation(tr)[:a.repr_train]
         p, _, _, z, _ = predict(sub, False, keep=True)
@@ -367,6 +421,11 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--tfidf-dir", type=Path, default=None, help="thư mục tfidf_fold{k}.parquet (mặc định --data)")
     ap.add_argument("--save-model", action="store_true", help="lưu weight epoch tốt nhất (phần không đóng băng, fp16)")
     ap.add_argument("--unknown", type=Path, default=None, help="gói run `?` (model.pack --unknown): dự đoán run `?` của fold test")
+    ap.add_argument("--load-model", default=None,
+                    help="nạp weight đã lưu thay cho train; mẫu đường dẫn có {fold}, {seed} (vd. .../C_s0_fold{fold}.model_soft0.pt)")
+    ap.add_argument("--mc", type=int, default=0, help="MC Dropout: số lần đoán lại khi bật dropout (0 = tắt)")
+    ap.add_argument("--mc-ids", default=None, help="JSON danh sách run_id `?` cần MC Dropout (mặc định mọi run `?` của fold)")
+    ap.add_argument("--mc-sub", type=int, default=2000, help="số run tập test có nhãn quy tắc chạy MC Dropout (bản gốc + che)")
     ap.add_argument("--out", default="results.json")
     return ap
 

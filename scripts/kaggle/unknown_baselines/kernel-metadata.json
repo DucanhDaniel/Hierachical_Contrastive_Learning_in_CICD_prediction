@@ -1,0 +1,17 @@
+{
+  "id": "ducanhpham2k5/p3-unknown-baselines",
+  "title": "p3-unknown-baselines",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "dataset_sources": [
+    "ducanhpham2k5/p3-log-data",
+    "ducanhpham2k5/p3-code",
+    "ducanhpham2k5/p3-unknown120"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

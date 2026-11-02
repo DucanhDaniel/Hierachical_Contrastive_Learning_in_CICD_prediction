@@ -52,14 +52,18 @@ print("mã mới:", len(zipfile.ZipFile("/content/p3code/project3_code.pyz").nam
 
 
 def notebook(name: str, title: str, slug: str, cmd: str, folds: str = "0 1 2 3 4",
-             check: str = '(runs.leaf == "crash").sum() > 2900', gpu: str = "L4", code: bool = False) -> Path:
-    """code=True: lấy mã từ dataset p3-code (cập nhật mã không cần upload lại p3-log-data)."""
+             check: str = '(runs.leaf == "crash").sum() > 2900', gpu: str = "L4", code: bool = False,
+             extra: dict = None) -> Path:
+    """code=True: lấy mã từ dataset p3-code (cập nhật mã không cần upload lại p3-log-data).
+    extra: {dataset: thư mục} các dataset Kaggle tải thêm (vd. gói run `?`, weight đã lưu)."""
     md = (f"# {title}\n\nDữ liệu: dataset Kaggle `ducanhpham2k5/p3-log-data` . Kết quả đẩy lên dataset "
           f"riêng tư `ducanhpham2k5/{slug}` sau mỗi fold.\n\nCần: Runtime GPU (L4), secret `KAGGLE_API_TOKEN` (biểu tượng "
           "chìa khoá). Chạy lần lượt các ô; ô 3 chạy nền, ô 4 xem tiến độ. Giữ tab mở đến khi log có dòng XONG.")
     code = ['import subprocess\nprint(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv"], '
             'capture_output=True, text=True).stdout)',
-            SETUP.replace("__SLUG__", slug).replace("__CHECK__", check) + (CODE_SETUP if code else ""),
+            SETUP.replace("__SLUG__", slug).replace("__CHECK__", check) + (CODE_SETUP if code else "")
+            + "".join(f'\nprint(subprocess.run("kaggle datasets download ducanhpham2k5/{k} -p {v} --unzip", shell=True, '
+                      f'capture_output=True, text=True).stdout[-200:])' for k, v in (extra or {}).items()),
             (RUN.replace("D/project3_code.pyz", "/content/p3code/project3_code.pyz") if code else RUN)
             .replace("__CMD__", cmd).replace("__FOLDS__", folds), PROGRESS]
     cells = [{"cell_type": "markdown", "metadata": {}, "source": md}] + [
@@ -106,6 +110,14 @@ if __name__ == "__main__":
                    "p3-colab-v10-c-a", FULL_C, "1:1 1:2 1:4 0:0", DOC_CHECK, "A100", code=True))
     print(notebook("p3_v10_c_b.ipynb", "v10 cấu hình C (chia đôi + điểm dòng + loss dòng): seed 0 fold 1-4",
                    "p3-colab-v10-c-b", FULL_C, "0:1 0:2 0:3 0:4", DOC_CHECK, "A100", code=True))
+    # 01/11: MC Dropout (Gal & Ghahramani 2016) trên weight C seed 0 đã lưu, không train lại: đoán lại 20 lần khi bật
+    # dropout cho 120 run `?` người gán + 500 run test có nhãn quy tắc mỗi fold
+    MC = (TRAIN.replace("--seed-start 1", "--seed-start 0") + " --line-attn --ev-loss 0.5 --unknown /content/p3unk "
+          "--load-model /content/p3w/C_s0_fold{fold}.model_soft0.pt --mc 20 --mc-ids /content/p3w/mc_ids.json "
+          "--mc-sub 500 --out OUT/MC_fold$f.json")
+    print(notebook("p3_mc.ipynb", "MC Dropout trên mô hình HCL bản cuối (weight C seed 0, không train lại): 5 fold",
+                   "p3-colab-mc", MC, "0 1 2 3 4", DOC_CHECK, "L4", code=True,
+                   extra={"p3-unknown-data": "/content/p3unk", "p3-c-weights": "/content/p3w"}))
     print(notebook("p3_v10_attn_b.ipynb", "v10 seed 1 + attention: fold 3", "p3-colab-v10-attn-b", V10_ATTN, "3", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "
