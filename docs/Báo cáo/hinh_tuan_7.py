@@ -1,4 +1,4 @@
-"""Hình cấu trúc cho báo cáo tuần 7: v10 và các baseline. Chạy: uvx --with matplotlib python hinh_tuan_7.py"""
+"""Hình cấu trúc cho báo cáo tuần 7: v10, cấu hình C (bản cuối, 02/11/2026) và các baseline. Chạy: uvx --with matplotlib python hinh_tuan_7.py"""
 from pathlib import Path
 
 import matplotlib
@@ -35,24 +35,28 @@ def canvas(w, h):
     return fig, ax
 
 
-def v10():
+def v10(c: bool = False):
+    """c=True: cấu hình C = v10 + cửa sổ chia đôi + attention theo dòng + loss chỉ dòng lỗi."""
     fig, ax = canvas(16, 6.6)
     # đầu vào
     log = box(ax, 0.2, 4.6, 2.3, 1.1, "Log các job fail", C_IN, bold=True)
     ctx = box(ax, 0.2, 2.9, 2.3, 1.1, "Ngữ cảnh CI\nworkflow / job / step", C_IN, bold=True)
     ft = box(ax, 0.2, 1.0, 2.3, 1.3, "Đặc trưng có cấu trúc\n22 giai đoạn / công cụ fail\n+ 11 tóm tắt diff", C_IN,
              fs=8, bold=True)
-    sel = box(ax, 3.0, 4.5, 2.6, 1.3, "Chọn khối log lỗi\n≤ 8 đoạn / run, cửa sổ\n1.600 ký tự quanh dòng fail",
-              C_PROC)
+    sel = box(ax, 3.0, 4.5, 2.6, 1.3, "Chọn khối log lỗi\n≤ 8 đoạn / run, cửa sổ\n1.600 ký tự chia đôi: quanh\ndòng lỗi đầu + dòng lỗi cuối"
+              if c else "Chọn khối log lỗi\n≤ 8 đoạn / run, cửa sổ\n1.600 ký tự quanh dòng fail", C_PROC, fs=8 if c else 9)
     enc = box(ax, 6.1, 2.9, 2.7, 2.9, "UniXcoder\n(dùng chung)\n\n512 token / đoạn\nđóng băng embedding\n+ 6 lớp dưới",
               C_ENC, bold=False)
-    pool = box(ax, 9.3, 4.5, 2.4, 1.3, "Trung bình token\n→ attention: đoạn → job → run\n(768 chiều)", C_PROC, fs=8.5)
+    pool = box(ax, 9.3, 4.5, 2.4, 1.3, "Gom token theo dòng\n→ attention: dòng → đoạn\n→ job → run (768 chiều)" if c
+               else "Trung bình token\n→ attention: đoạn → job → run\n(768 chiều)", C_PROC, fs=8.5)
+    if c:
+        ax.text(10.5, 5.95, "trọng số dòng = điểm từng dòng log", ha="center", va="bottom", fontsize=8, style="italic")
     c64 = box(ax, 9.3, 2.9, 2.4, 1.1, "Linear → 64", C_PROC)
     f64 = box(ax, 9.3, 1.1, 2.4, 1.1, "Chuẩn hoá → Linear → 64", C_PROC)
     z = box(ax, 12.1, 2.7, 1.5, 1.7, "Ghép\n→ MLP\n→ z (256)", C_ENC, bold=True)
     h1 = box(ax, 14.0, 4.6, 1.85, 1.0, "Tầng 1 (2)\nDự án / Môi trường", C_HEAD, fs=8.5)
     h2 = box(ax, 14.0, 3.05, 1.85, 1.0, "Tầng 2 (5)\nthời điểm cần sửa", C_HEAD, fs=8.5)
-    h3 = box(ax, 14.0, 1.5, 1.85, 1.0, "Lá (13)\nloại lỗi", C_HEAD, fs=8.5)
+    h3 = box(ax, 14.0, 1.5, 1.85, 1.0, "Tầng 3 (13)\nloại lỗi", C_HEAD, fs=8.5)
     arrow(ax, log, sel); arrow(ax, sel, enc, "r", "l")
     arrow(ax, ctx, enc)
     ax.add_patch(FancyArrowPatch((8.8, 5.15), (9.3, 5.15), arrowstyle="-|>", mutation_scale=11, color="#404040", lw=1.1))
@@ -62,12 +66,13 @@ def v10():
         arrow(ax, b, z)
     for h in (h1, h2, h3):
         arrow(ax, z, h)
-    ax.text(14.92, 0.95, "Giải mã theo cây: tầng 2 = argmax(log p₁ + log p₂),\nlá = lá con có p₃ lớn nhất",
+    ax.text(14.92, 0.95, "Giải mã theo cây: chọn tầng 1 và tầng 2 trước,\nrồi chọn loại lỗi trong nhóm đã chọn",
             ha="center", va="top", fontsize=8, style="italic")
-    ax.text(0.2, 0.25, "Huấn luyện: cross-entropy ở 3 tầng (trọng số lớp = căn bậc hai nghịch tần suất) + 0,5 × SupCon mềm "
-            "(cùng lá: dương 1, lá anh em cùng cha: 0,4);\n50% run train bị che dòng bằng chứng. "
-            "Gộp seed: trung bình log xác suất 3 tầng của các mô hình rồi mới giải mã.", fontsize=8.5, va="bottom")
-    fig.savefig(OUT / "v10.png", dpi=200, bbox_inches="tight")
+    ax.text(0.2, 0.25, "Huấn luyện: phân loại 3 tầng (cross-entropy) + 0,5 × học tương phản phân cấp "
+            "(cùng loại lỗi: kéo gần, khác loại cùng nhóm cha: kéo gần vừa)" + (" + 0,5 × dạy chỉ dòng lỗi" if c else "")
+            + ";\n50% run huấn luyện bị xoá dòng bằng chứng. "
+            "Kết hợp nhiều lần huấn luyện: trung bình xác suất 3 tầng của các mô hình rồi mới giải mã.", fontsize=8.5, va="bottom")
+    fig.savefig(OUT / ("cau-hinh-c.png" if c else "v10.png"), dpi=200, bbox_inches="tight")
 
 
 def baselines():
@@ -160,6 +165,7 @@ def cay_nhan():
 
 if __name__ == "__main__":
     v10()
+    v10(c=True)
     baselines()
     cay_nhan()
     print("->", *sorted(p.name for p in OUT.glob("*.png")))
