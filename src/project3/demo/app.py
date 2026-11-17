@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .predict import ACTION, NAMES, URL, Predictor, agent_input, fetch_run
 from .source import links as src_links
+from .catalog import load as load_catalog, render as render_catalog
 
 
 def src_md(o: dict, text: str) -> str:
@@ -112,11 +113,15 @@ def log_view(o: dict, k: int = 2) -> str:
 
 def light_style(gr):
     """Giao diện nền trắng (cả khi máy người xem để chế độ tối); dùng chung cho app (Colab) và local (laptop)."""
-    theme = gr.themes.Default(primary_hue="blue", neutral_hue="slate").set(
+    theme = gr.themes.Default(primary_hue="red", neutral_hue="slate").set(
         body_background_fill="white", body_background_fill_dark="white", block_background_fill="white",
         block_background_fill_dark="white", body_text_color_dark="#1f2937", block_label_text_color_dark="#374151",
         input_background_fill_dark="white", border_color_primary_dark="#e5e7eb")
-    css = ".gradio-container{max-width:1100px!important;margin:auto}"
+    from .catalog import CSS as CAT_CSS  # 17/11: catalog lỗi + tông đỏ trắng
+    css = (".gradio-container{max-width:1100px!important;margin:auto}"
+           "button.primary{background:#ee0033!important;border-color:#ee0033!important;color:#fff!important}"
+           "button[role=tab][aria-selected=true]{color:#ee0033!important;border-color:#ee0033!important}"
+           + CAT_CSS)
     light = "() => document.body.classList.remove('dark')"  # luôn nền trắng, kể cả khi máy người xem để chế độ tối
     style = dict(theme=theme, css=css, js=light)
     in_blocks = int(gr.__version__.split(".")[0]) < 6  # Gradio 6 chuyển theme / css / js từ Blocks sang launch()
@@ -167,36 +172,39 @@ def launch(bundle: str, weights: str, port: int = 7860, ngrok_token: str = None,
     style, in_blocks = light_style(gr)
 
     with gr.Blocks(title="Phân loại lỗi build CI", **(style if in_blocks else {})) as demo:
-        gr.Markdown("## Phân loại nguyên nhân lỗi build CI\n"
-                    "Dán link một lần chạy GitHub Actions bị lỗi. Mô hình đọc log, thông tin CI và phần code thay đổi, "
-                    "rồi cho biết lỗi thuộc loại nào, nên xử lý ra sao và dựa vào những dòng log nào để kết luận.\n\n"
-                    "Nhãn được suy ra từ nội dung log chứ không từ tên job, nên một job tên `lint` vẫn có thể là lỗi "
-                    "biên dịch. Mô hình được huấn luyện trên các dự án Java và Kotlin dùng Maven hoặc Gradle.")
-        with gr.Row(equal_height=True):
-            url = gr.Textbox(label="Link lần chạy", placeholder="https://github.com/<owner>/<repo>/actions/runs/<id>",
-                             scale=5)
-            btn = gr.Button("Phân loại", variant="primary", scale=1)
-        if examples:
-            pick = gr.Dropdown([(f"{v[1]['repo']} · {v[0]}", v[1]["url"]) for v in examples.values()], value=None,
-                               label="Hoặc chọn một lần chạy mẫu, log đã được lưu sẵn")
-            pick.change(lambda u: u or "", pick, url)
-        out_md = gr.Markdown()
-        out_log = gr.HTML()
-        # 16/11: đầu vào cho agent lập trình (nhãn + dòng nguyên nhân), dán vào agent đang mở repo ở đúng commit
-        out_agent = gr.Textbox(label="Đầu vào cho agent tìm nguyên nhân trong code (sao chép rồi dán vào Claude Code "
-                                     "hoặc agent khác đang mở repo ở đúng commit)", lines=8, max_lines=30,
-                               interactive=False,  # Gradio 6 đổi show_copy_button thành buttons
-                               **({"show_copy_button": True} if in_blocks else {"buttons": ["copy"]}))
-        with gr.Accordion("Kết quả đầy đủ dạng JSON", open=False):
-            out_json = gr.JSON()
-        outs = [out_md, out_log, out_agent, out_json]
-        btn.click(run, url, outs, api_name="predict")  # 16/11: laptop gọi qua gradio_client (demo.local)
-        url.submit(run, url, outs, api_name=False)
-        rec_in, rec_btn = gr.Textbox(visible=False), gr.Button(visible=False)
-        rec_btn.click(run_record, rec_in, outs, api_name="predict_record")
-        ex_btn, ex_out = gr.Button(visible=False), gr.JSON(visible=False)  # danh sách run mẫu cho demo.local
-        ex_btn.click(lambda: [(f"{v[1]['repo']} · {v[0]}", v[1]["url"]) for v in examples.values()], None, ex_out,
-                     api_name="examples")
+        with gr.Tab("Phân loại lỗi"):
+            gr.Markdown("## Phân loại nguyên nhân lỗi build CI\n"
+                        "Dán link một lần chạy GitHub Actions bị lỗi. Mô hình đọc log, thông tin CI và phần code thay đổi, "
+                        "rồi cho biết lỗi thuộc loại nào, nên xử lý ra sao và dựa vào những dòng log nào để kết luận.\n\n"
+                        "Nhãn được suy ra từ nội dung log chứ không từ tên job, nên một job tên `lint` vẫn có thể là lỗi "
+                        "biên dịch. Mô hình được huấn luyện trên các dự án Java và Kotlin dùng Maven hoặc Gradle.")
+            with gr.Row(equal_height=True):
+                url = gr.Textbox(label="Link lần chạy", placeholder="https://github.com/<owner>/<repo>/actions/runs/<id>",
+                                 scale=5)
+                btn = gr.Button("Phân loại", variant="primary", scale=1)
+            if examples:
+                pick = gr.Dropdown([(f"{v[1]['repo']} · {v[0]}", v[1]["url"]) for v in examples.values()], value=None,
+                                   label="Hoặc chọn một lần chạy mẫu, log đã được lưu sẵn")
+                pick.change(lambda u: u or "", pick, url)
+            out_md = gr.Markdown()
+            out_log = gr.HTML()
+            # 16/11: đầu vào cho agent lập trình (nhãn + dòng nguyên nhân), dán vào agent đang mở repo ở đúng commit
+            out_agent = gr.Textbox(label="Đầu vào cho agent tìm nguyên nhân trong code (sao chép rồi dán vào Claude Code "
+                                         "hoặc agent khác đang mở repo ở đúng commit)", lines=8, max_lines=30,
+                                   interactive=False,  # Gradio 6 đổi show_copy_button thành buttons
+                                   **({"show_copy_button": True} if in_blocks else {"buttons": ["copy"]}))
+            with gr.Accordion("Kết quả đầy đủ dạng JSON", open=False):
+                out_json = gr.JSON()
+            outs = [out_md, out_log, out_agent, out_json]
+            btn.click(run, url, outs, api_name="predict")  # 16/11: laptop gọi qua gradio_client (demo.local)
+            url.submit(run, url, outs, api_name=False)
+            rec_in, rec_btn = gr.Textbox(visible=False), gr.Button(visible=False)
+            rec_btn.click(run_record, rec_in, outs, api_name="predict_record")
+            ex_btn, ex_out = gr.Button(visible=False), gr.JSON(visible=False)  # danh sách run mẫu cho demo.local
+            ex_btn.click(lambda: [(f"{v[1]['repo']} · {v[0]}", v[1]["url"]) for v in examples.values()], None, ex_out,
+                         api_name="examples")
+        with gr.Tab("Catalog lỗi CI/CD"):
+            gr.HTML(render_catalog(load_catalog(bundle)))
     demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True, share=share, quiet=True,
                         **({} if in_blocks else style))
     if not ngrok_token:

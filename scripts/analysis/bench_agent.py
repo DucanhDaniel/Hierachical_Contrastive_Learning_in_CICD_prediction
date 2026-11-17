@@ -28,10 +28,11 @@ from project3.demo.agent import MAX_TURNS, MODEL, SCHEMA, TASK, WS, claude_bin, 
 from project3.demo.predict import AGENT_PROMPT, NAMES, cause_blocks  # noqa: E402
 from project3.pipeline.run_dataset import clean  # noqa: E402
 
-AG, JD = OUT / "agent", OUT / "judge"
-CONDS = ("A", "E", "G")
+BACKEND = os.environ.get("BENCH_BACKEND", "claude")  # claude | agy (17/11: agent thứ hai, chỉ cách A và E)
+AG, JD = (OUT / "agent", OUT / "judge") if BACKEND == "claude" else (OUT / "agent_agy", OUT / "judge_agy")
+CONDS = ("A", "E", "G") if BACKEND == "claude" else ("A", "E")
 LOG_BYTES = 1_000_000
-LETTERS = "XYZ"
+LETTERS = "XYZ"[:len(CONDS)]
 JUDGE_LOG_CHARS, JUDGE_REF_CHARS = 30_000, 20_000  # như rca_agent (tự đặt)
 A_PROMPT = """You are investigating why a GitHub Actions CI run failed (trigger: {event}).
 
@@ -92,6 +93,24 @@ def run() -> None:
                 log.write_text(c["log"].lstrip("\ufeff")[-LOG_BYTES:], encoding="utf-8")
             elif log.exists():
                 log.unlink()
+            if BACKEND == "agy":  # 17/11: agent thứ hai (Antigravity CLI, --mode plan), qua demo.agent.call
+                from project3.demo.agent import AGY_MODEL, call
+                t1 = time.time()
+                r = call(ws, pr[k], backend="agy")
+                rec = {"case": c["case"], "cond": k, "seconds": round(time.time() - t1, 1),
+                       "clone_s": round(clone_s, 1), "prompt_chars": len(pr[k]), "backend": f"agy:{AGY_MODEL}",
+                       "out": {"structured_output": r.get("answer"), "num_turns": r.get("turns"),
+                               "is_error": bool(r.get("error")), "result": r.get("error"),
+                               "usage": {"input_tokens": r.get("in_tok", 0), "output_tokens": r.get("out_tok", 0)}}}
+                (AG / f"{c['case']}_{k}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1),
+                                                          encoding="utf-8")
+                print(c["case"], k, f"{rec['seconds']:.0f}s", r.get("in_tok"), "lỗi: " + r["error"][:120]
+                      if r.get("error") else "", flush=True)
+                if re.search(r"quota|rate.?limit|exhausted|limit reached|429", r.get("error") or "", re.I):
+                    (AG / f"{c['case']}_{k}.json").unlink()  # hết hạn mức: bỏ kết quả lỗi, dừng (chạy tiếp sau)
+                    rm(ws)
+                    sys.exit("hết hạn mức Antigravity, dừng")
+                continue
             cmd = [claude_bin(), "-p", TASK, "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
                    "--model", MODEL, "--tools", "Read,Grep,Glob", "--strict-mcp-config", "--setting-sources", "project",
                    "--disable-slash-commands", "--no-session-persistence", "--max-turns", str(MAX_TURNS),
@@ -115,10 +134,10 @@ def run() -> None:
         rm(ws)
 
 
-JUDGE = """You are grading three automated root-cause analyses (X, Y and Z) of a failed GitHub Actions CI run.
+JUDGE = """You are grading {n} automated root-cause analyses ({letters}) of a failed GitHub Actions CI run.
 The input (after this instruction) contains: the CI failure log (its last part), REFERENCE evidence of the real cause
 (either the developer's fix: the diff from the failing commit to the next commit after which CI passed, or a root
-cause written by an expert annotator), and the three analyses. Give exactly one verdict per analysis.
+cause written by an expert annotator), and the {n} analyses. Give exactly one verdict per analysis.
 
 1. If the reference is a developer fix, decide whether it actually addresses this failure (`fix_addresses_failure`);
    if the reference is an expert root cause, answer "yes".
@@ -132,7 +151,7 @@ def judge_schema() -> dict:
     return {"type": "object", "properties": {
         "fix_addresses_failure": {"type": "string", "enum": ["yes", "no", "unclear"]},
         "failure_kind": {"type": "string", "enum": ["code_or_build_config", "transient_or_infrastructure", "unclear"]},
-        "verdicts": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "object", "properties": {
+        "verdicts": {"type": "array", "minItems": len(CONDS), "maxItems": len(CONDS), "items": {"type": "object", "properties": {
             "answer": {"type": "string", "enum": list(LETTERS)},
             "root_cause": {"type": "string", "enum": ["correct", "partially_correct", "wrong"]},
             "reason": {"type": "string"}}, "required": ["answer", "root_cause", "reason"], "additionalProperties": False}}},
@@ -174,7 +193,7 @@ def judge() -> None:
              for k, f in fs.items()}
         body = (f"===== CI FAILURE LOG (last part) =====\n{c['log'][-JUDGE_LOG_CHARS:]}\n\n===== REFERENCE =====\n"
                 f"{reference(c)}\n" + "".join(f"\n===== ANALYSIS {L} =====\n{a[k]}\n" for L, k in zip(LETTERS, perm)))
-        cmd = [claude_bin(), "-p", JUDGE, "--output-format", "json", "--json-schema", json.dumps(judge_schema()),
+        cmd = [claude_bin(), "-p", JUDGE.format(n={2: "two", 3: "three"}[len(CONDS)], letters={2: "X and Y", 3: "X, Y and Z"}[len(CONDS)]), "--output-format", "json", "--json-schema", json.dumps(judge_schema()),
                "--model", MODEL, "--tools", "", "--strict-mcp-config", "--setting-sources", "project",
                "--disable-slash-commands", "--no-session-persistence", "--max-turns", "3"]
         empty = OUT / "judge_cwd"
@@ -222,7 +241,7 @@ def score() -> None:
                           kind=so.get("failure_kind")))
     if j:
         d = d.merge(pd.DataFrame(j), on=["case", "cond"], how="left")
-    d.to_csv(OUT / "agent_scores.csv", index=False)
+    d.to_csv(OUT / ("agent_scores.csv" if BACKEND == "claude" else "agent_scores_agy.csv"), index=False)
     pd.set_option("display.width", 220)
     print(d.groupby("cond")[["ok", "top1", "top3", "in_tok", "out_tok", "turns", "usd", "seconds", "prompt_k"]].mean()
           .round(3).T.to_string())
@@ -235,8 +254,8 @@ def score() -> None:
         print(pd.crosstab(v.cond, v.judge).to_string())
         w = d.pivot_table(index="case", columns="cond", values="judge", aggfunc="first").eq("correct")
         print("A đúng mà E không:", (w.A & ~w.E).sum(), "| E đúng mà A không:", (w.E & ~w.A).sum(),
-              "| A đúng mà G không:", (w.A & ~w.G).sum(), "| E đúng mà G không:", (w.E & ~w.G).sum(),
-              "| G đúng mà E không:", (w.G & ~w.E).sum())
+              *(["| A đúng mà G không:", (w.A & ~w.G).sum(), "| E đúng mà G không:", (w.E & ~w.G).sum(),
+                 "| G đúng mà E không:", (w.G & ~w.E).sum()] if "G" in w else []))
     print("LogDx must_mention:", d[d.src == "LogDx-CI"].groupby("cond").mention.mean().round(2).to_dict())
     print(f"tổng danh nghĩa agent ${d.usd.sum():.2f}")
 

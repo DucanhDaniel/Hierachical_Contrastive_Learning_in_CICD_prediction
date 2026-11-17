@@ -31,15 +31,23 @@ SCHEMA = {
         # 16/11: cách sửa cụ thể (file, dòng, thay gì bằng gì; có thể kèm đoạn code), agent không tự sửa file
         "suggested_fix": {"type": "string"},
         "confidence": {"type": "number"},
+        # 17/11: thay đổi tối thiểu dạng thay chuỗi (agent vẫn KHÔNG sửa file; bot áp khi người dùng bấm nút)
+        "edits": {"type": "array", "maxItems": 5, "items": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}},
+            "required": ["path", "old_text", "new_text"], "additionalProperties": False}},
     },
-    "required": ["needs_code_change", "suspects", "root_cause", "suggested_fix", "confidence"],
+    "required": ["needs_code_change", "suspects", "root_cause", "suggested_fix", "confidence", "edits"],
     "additionalProperties": False,
 }
 TASK = ("Read the failure description from standard input and investigate the repository in the current directory "
         "(checked out at the failing commit, no git history). `_ci/pr.diff` holds the changes introduced by the pull "
         "request (or the pushed commit). Paths must be relative to the repository root. Do not modify any file. In "
         "`suggested_fix`, describe the concrete change that fixes the failure (which file and line, what to replace with "
-        "what; include a short code snippet when it helps), or say why no code change is needed.")
+        "what; include a short code snippet when it helps), or say why no code change is needed. In `edits`, give the "
+        "smallest set of exact text replacements that implements the fix: `old_text` must be copied verbatim from the "
+        "file at this commit (whole lines, including indentation) and appear exactly once in it; `new_text` replaces it. "
+        "Leave `edits` empty when no code change is needed or you are not confident.")
 
 
 def claude_bin() -> str:
@@ -113,6 +121,73 @@ def pr_diff(gh, repo: str, sha: str, event: str) -> str:
     return "\n".join(out)[:DIFF_CHARS] or "(empty diff)"
 
 
+BACKEND = os.environ.get("P3_AGENT_BACKEND", "claude")  # claude | agy (Antigravity CLI, 17/11)
+AGY_MODEL = os.environ.get("P3_AGY_MODEL", "gemini-4-argon-high")
+
+
+def agy_bin() -> str:
+    """Antigravity CLI: AGY_BIN, `agy` trên PATH, hoặc bản đi kèm Antigravity IDE (~/.gemini/bin/agy.exe)."""
+    for b in (os.environ.get("AGY_BIN"), shutil.which("agy"), os.path.expanduser(r"~\.gemini\bin\agy.exe")):
+        if b and Path(b).exists():
+            return b
+    raise FileNotFoundError("Không tìm thấy Antigravity CLI (agy). Cài agy hoặc đặt biến AGY_BIN.")
+
+
+def call(ws: Path, prompt: str, backend: str = None) -> dict:
+    """Gọi agent CHỈ ĐỌC trong ws -> {"answer", "turns", "in_tok", "out_tok", "error"?}.
+    claude: --tools Read,Grep,Glob (chặn cứng). agy: --mode plan (thử 17/11: đọc được, tạo file / chạy lệnh ghi file
+    không được; ở chế độ mặc định agy TỰ GHI ĐƯỢC file nên không bao giờ dùng chế độ đó)."""
+    backend = backend or BACKEND
+    if backend == "agy":
+        sf = ws.parent / f"_schema_{ws.name}.json"
+        sf.write_text(json.dumps(SCHEMA), encoding="utf-8")
+        # 17/11 (đo trên lịch sử hội thoại agy): agy KHÔNG có công cụ tìm chữ (chỉ read_file/glob); tìm chữ phải qua lệnh
+        # terminal, mà --mode plan giữ mọi lệnh chờ duyệt -> agy đọc nguyên file (log 1 MB) -> token rất lớn.
+        # Cách đã thử thành công: chế độ thường + quy tắc quyền: CHO PHÉP findstr (tìm chữ, chỉ đọc), CẤM
+        # write_file/edit_file; lệnh khác tự bị từ chối khi chạy không tương tác. (Không dùng --disable-slash-commands.)
+        perm = ws.parent / f"_perm_{ws.name}.json"
+        perm.write_text(json.dumps({"permissions": {"allow": ["command(findstr)"],
+                                                    "deny": ["write_file", "edit_file", "write_file(*)",
+                                                             "edit_file(*)"]}}), encoding="utf-8")
+        rule = (" To search text, run the terminal command `findstr /s /n /i /c:\"<text>\" <files>` (read-only; it is "
+                "the only command allowed). Do not read whole large files such as the CI log: search first, then read "
+                "only the needed line ranges (read_file supports StartLine/EndLine). You cannot write or edit files. "
+                "Do not launch subagents or background tasks and do not write a plan file: investigate yourself and "
+                "return the final JSON answer in this turn.")
+        cmd = [agy_bin(), "-p", TASK + rule + "\n\n" + prompt, "--output-format", "json", "--json-schema", str(sf),
+               "--settings", str(perm), "--model", AGY_MODEL, "--print-timeout", "20m"]
+        p = sh(cmd, cwd=ws, timeout=1500)
+        sf.unlink(missing_ok=True)
+        perm.unlink(missing_ok=True)
+        try:
+            res = json.loads(p.stdout)
+        except json.JSONDecodeError:
+            return {"error": f"agy không trả JSON (mã {p.returncode}): {(p.stderr or p.stdout)[-400:]}"}
+        u = res.get("usage", {})
+        out = {"answer": res.get("structured_output"), "turns": res.get("num_turns"),
+               "in_tok": u.get("input_tokens", 0) + u.get("cache_read_tokens", 0),
+               "out_tok": u.get("output_tokens", 0) + u.get("thinking_tokens", 0), "backend": f"agy:{AGY_MODEL}"}
+        if res.get("status") != "SUCCESS" or not out["answer"]:
+            out["error"] = str(res.get("error") or res.get("response") or p.stderr)[-400:]
+        return out
+    cmd = [claude_bin(), "-p", TASK, "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
+           "--model", MODEL, "--tools", "Read,Grep,Glob", "--strict-mcp-config", "--setting-sources", "project",
+           "--disable-slash-commands", "--no-session-persistence", "--max-turns", str(MAX_TURNS),
+           "--max-budget-usd", str(MAX_USD)]
+    p = sh(cmd, cwd=ws, timeout=1800, input=prompt)
+    try:
+        res = json.loads(p.stdout)
+    except json.JSONDecodeError:
+        return {"error": f"Claude Code không trả JSON (mã {p.returncode}): {(p.stderr or p.stdout)[-400:]}"}
+    u = res.get("usage", {})
+    out = {"answer": res.get("structured_output"), "turns": res.get("num_turns"),
+           "in_tok": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0)
+           + u.get("cache_creation_input_tokens", 0), "out_tok": u.get("output_tokens", 0), "backend": "claude"}
+    if res.get("is_error") or not out["answer"]:
+        out["error"] = str(res.get("result") or p.stderr)[-400:]  # ví dụ: chạm giới hạn 5 giờ của gói
+    return out
+
+
 def run(o: dict, prompt: str, gh) -> dict:
     """o: kết quả phân loại (cần repo, run_id, head_sha, event); prompt: predict.agent_input(o).
     -> {"answer": đầu ra theo SCHEMA hoặc None, "error", "seconds", "clone_seconds", "turns", "in_tok", "out_tok"}."""
@@ -128,22 +203,8 @@ def run(o: dict, prompt: str, gh) -> dict:
         (ws / "_ci").mkdir()
         (ws / "_ci" / "pr.diff").write_text(pr_diff(gh, repo, sha, o.get("event", "")), encoding="utf-8")
         t1 = time.time()
-        cmd = [claude_bin(), "-p", TASK, "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
-               "--model", MODEL, "--tools", "Read,Grep,Glob", "--strict-mcp-config", "--setting-sources", "project",
-               "--disable-slash-commands", "--no-session-persistence", "--max-turns", str(MAX_TURNS),
-               "--max-budget-usd", str(MAX_USD)]
-        p = sh(cmd, cwd=ws, timeout=1800, input=prompt)
-        try:
-            res = json.loads(p.stdout)
-        except json.JSONDecodeError:
-            return {"error": f"Claude Code không trả JSON (mã {p.returncode}): {(p.stderr or p.stdout)[-400:]}"}
-        u = res.get("usage", {})
-        out = {"answer": res.get("structured_output"), "seconds": round(time.time() - t1, 1),
-               "clone_seconds": round(t1 - t0, 1), "turns": res.get("num_turns"),
-               "in_tok": u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0)
-               + u.get("cache_creation_input_tokens", 0), "out_tok": u.get("output_tokens", 0)}
-        if res.get("is_error") or not out["answer"]:
-            out["error"] = str(res.get("result") or p.stderr)[-400:]  # ví dụ: chạm giới hạn 5 giờ của gói
+        out = call(ws, prompt)
+        out.update(seconds=round(time.time() - t1, 1), clone_seconds=round(t1 - t0, 1))
         return out
     except Exception as e:  # noqa: BLE001 — hiện lỗi cho người dùng
         return {"error": f"{type(e).__name__}: {e}"}

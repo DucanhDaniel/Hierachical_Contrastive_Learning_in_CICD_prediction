@@ -72,6 +72,8 @@ def main() -> None:
         rec.update(url=f"https://github.com/{r.repository}/actions/runs/{rid}", note=note, head_sha=rd.head_sha.get(rid),
                    diff={"vector": [float(v) for v in feats.loc[rid, "diff"]], "files": files})
         (OUT / "examples" / f"{rid}.json.gz").write_bytes(gzip.compress(json.dumps(rec).encode("utf-8")))
+    from .catalog import build as build_catalog  # 17/11: catalog lỗi hiển thị trong demo
+    (OUT / "catalog.json").write_text(json.dumps(build_catalog(), ensure_ascii=False), encoding="utf-8")
     with zipfile.ZipFile(OUT / "p3demo_code.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(Path("src/project3").rglob("*")):
             if f.suffix in (".py", ".html", ".json") and "__pycache__" not in f.parts:

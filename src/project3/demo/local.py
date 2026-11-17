@@ -12,6 +12,7 @@ import sys
 import json
 
 from .agent import run as run_agent
+from .catalog import load as load_catalog, render as render_catalog
 from .predict import fetch_run
 
 
@@ -71,28 +72,31 @@ def launch(colab_url: str, port: int = 7861) -> None:
     from .app import light_style
     style, in_blocks = light_style(gr)  # nền trắng như trang trên Colab
     with gr.Blocks(title="Phân loại và truy vết lỗi build CI", **(style if in_blocks else {})) as demo:
-        gr.Markdown("## Phân loại và truy vết nguyên nhân lỗi build CI\nMô hình phân loại chạy trên Colab. Agent tìm "
-                    "nguyên nhân trong code chạy trên máy này bằng Claude Code. Agent chỉ đọc code, không sửa file hay "
-                    "chạy lệnh.")
-        with gr.Row(equal_height=True):
-            url = gr.Textbox(label="Link lần chạy", placeholder="https://github.com/<owner>/<repo>/actions/runs/<id>",
-                             scale=5)
-            btn = gr.Button("Phân loại", variant="primary", scale=1)
-        if examples:
-            pick = gr.Dropdown([tuple(x) for x in examples], value=None,
-                               label="Hoặc chọn một lần chạy mẫu, log đã được lưu sẵn")
-            pick.change(lambda u: u or "", pick, url)
-        out_md = gr.Markdown()
-        out_log = gr.HTML()
-        with gr.Accordion("Đầu vào đưa cho agent", open=False):
-            out_agent_in = gr.Textbox(lines=8, max_lines=30, interactive=False, show_label=False)
-        agent_btn = gr.Button("Tìm nguyên nhân trong code", variant="secondary")
-        out_agent = gr.Markdown()
-        state = gr.State({})
-        outs = [out_md, out_log, out_agent_in, state, out_agent]
-        btn.click(classify, url, outs)
-        url.submit(classify, url, outs)
-        agent_btn.click(find_cause, [state, out_agent_in], out_agent)
+        with gr.Tab("Phân loại và truy vết"):
+            gr.Markdown("## Phân loại và truy vết nguyên nhân lỗi build CI\nMô hình phân loại chạy trên Colab. Agent tìm "
+                        "nguyên nhân trong code chạy trên máy này bằng Claude Code. Agent chỉ đọc code, không sửa file hay "
+                        "chạy lệnh.")
+            with gr.Row(equal_height=True):
+                url = gr.Textbox(label="Link lần chạy", placeholder="https://github.com/<owner>/<repo>/actions/runs/<id>",
+                                 scale=5)
+                btn = gr.Button("Phân loại", variant="primary", scale=1)
+            if examples:
+                pick = gr.Dropdown([tuple(x) for x in examples], value=None,
+                                   label="Hoặc chọn một lần chạy mẫu, log đã được lưu sẵn")
+                pick.change(lambda u: u or "", pick, url)
+            out_md = gr.Markdown()
+            out_log = gr.HTML()
+            with gr.Accordion("Đầu vào đưa cho agent", open=False):
+                out_agent_in = gr.Textbox(lines=8, max_lines=30, interactive=False, show_label=False)
+            agent_btn = gr.Button("Tìm nguyên nhân trong code", variant="secondary")
+            out_agent = gr.Markdown()
+            state = gr.State({})
+            outs = [out_md, out_log, out_agent_in, state, out_agent]
+            btn.click(classify, url, outs)
+            url.submit(classify, url, outs)
+            agent_btn.click(find_cause, [state, out_agent_in], out_agent)
+        with gr.Tab("Catalog lỗi CI/CD"):
+            gr.HTML(render_catalog(load_catalog("data/demo_bundle")))  # bản catalog trên máy
     demo.queue(default_concurrency_limit=1).launch(server_name="127.0.0.1", server_port=port, inbrowser=True,
                                                    **({} if in_blocks else style))
 
