@@ -118,6 +118,21 @@ if __name__ == "__main__":
     print(notebook("p3_mc.ipynb", "MC Dropout trên mô hình HCL bản cuối (weight C seed 0, không train lại): 5 fold",
                    "p3-colab-mc", MC, "0 1 2 3 4", DOC_CHECK, "L4", code=True,
                    extra={"p3-unknown-data": "/content/p3unk", "p3-c-weights": "/content/p3w"}))
+    # 04/11: ablation đầu vào trên T4, seed 0, so với C seed 0 T4 (Kaggle p3-v10-c-k1/k2, fold 0, 3, 4);
+    # bỏ cả hai (--feats none) fold 0, 3 chạy ở kernel Kaggle p3-abl-in-k1
+    ABL_IN = (TRAIN.replace("--fold $f", "--fold $k").replace("--feats all", "--feats $x").replace("--seed-start 1", "--seed-start 0")
+              + " --line-attn --ev-loss 0.5 --save-repr --repr-train 500 --out OUT/${n}_s0_fold$k.json")
+    ABL_IN = "n=${f%%:*}; k=${f##*:}; case $n in D) x=diff;; S) x=struct;; N) x=none;; esac; " + ABL_IN
+    print(notebook("p3_abl_in_a.ipynb", "Ablation đầu vào T4 seed 0: bỏ thông tin CI (chỉ còn thống kê diff), fold 0",
+                   "p3-colab-abl-in-a", ABL_IN, "D:0", DOC_CHECK, "T4", code=True))
+    print(notebook("p3_abl_in_b.ipynb", "Ablation đầu vào T4 seed 0: bỏ thống kê diff (chỉ còn thông tin CI), fold 0",
+                   "p3-colab-abl-in-b", ABL_IN, "S:0", DOC_CHECK, "T4", code=True))
+    # 04/11 tối: baseline BERT (ICSE 2024 poster) đọc cùng loại đầu vào với mô hình chính, 1 chuỗi 512 token; fold
+    # 0, 3, 4 để ghép cặp với C seed 0 và ablation đầu vào
+    BERT_IN = ("mkdir -p OUT/fold$f && python -m project3.model.ladder --data {D} --out OUT/fold$f --models bert_in "
+               "--folds $f --epochs 2 --batch 16")
+    print(notebook("p3_bert_in.ipynb", "B2' BERT cùng đầu vào mô hình chính (ngữ cảnh CI + đặc trưng + khối log lỗi): fold 0, 3, 4",
+                   "p3-colab-bert-in", BERT_IN, "0 3 4", DOC_CHECK, "A100", code=True))
     print(notebook("p3_v10_attn_b.ipynb", "v10 seed 1 + attention: fold 3", "p3-colab-v10-attn-b", V10_ATTN, "3", DOC_CHECK, "A100"))
     print(notebook("p3_v10_oom.ipynb", "v10 soft: 5 fold, nhãn mới", "p3-colab-v10-oom",
                    "python -m project3.model.train --data {D} --fold $f --variants soft --feats all --chunks error "

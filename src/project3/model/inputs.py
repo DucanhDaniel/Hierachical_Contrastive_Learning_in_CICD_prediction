@@ -137,3 +137,44 @@ def diff_features(path, event: str) -> list:
 
 def as_matrix(rows) -> np.ndarray:
     return np.asarray(list(rows), dtype=np.float32)
+
+
+# ---- dòng nguyên nhân (15/11/2026, người dùng duyệt): nhãn cho đầu dòng nguyên nhân (train --cause-loss) ----
+# Lá test (testfailure, itestfailure, flaky): dòng ngoại lệ / assert của test lỗi + dòng `Caused by` CUỐI mỗi chuỗi
+# (nguyên nhân gốc). Lá khác: dòng bằng chứng của quy tắc nếu nó không phải dòng tổng kết của công cụ.
+# Chỉ xét các dòng nằm trong đầu vào của mô hình (đoạn đã cắt cửa sổ).
+CAUSE_TEST_LEAVES = {"testfailure", "itestfailure", "flaky"}
+SUMMARY = re.compile(r"BUILD FAILURE|BUILD FAILED|Failed to execute goal|Execution failed for task|What went wrong|"
+                     r"##\[error\]Process completed|There were failing tests|Tests run:|tests completed, \d+ failed|"
+                     r"> Task \S+ FAILED|COMPILATION ERROR|Re-run Maven|for more information about the errors|"
+                     r"See the report at|Run with --(?:stacktrace|scan|info)|\[Help 1\]|Tests in error|"
+                     r"\[ERROR\] (?:Failures|Errors):\s*$")
+EXC_LINE = re.compile(r"^\s*(?:##\[error\])?\s*(?:(?:[a-zA-Z_$][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error|Failure|Failed|"
+                      r"Throwable)\b|\w*(?:Error|Exception): |E\s{2,}\S)|expected:?\s*<.*>\s*but was|expected .+ but was")
+# danh sách test lỗi cuối lượt Maven surefire: "[ERROR]   Lớp.phươngthức:89->assertX:37 <thông báo>" / "Run 2: ... » Lỗi"
+SUREFIRE_ITEM = re.compile(r"^\[ERROR\]\s{2,}(?:Run \d+: )?\S+[.>#]\S+:\d+\S*\s+\S")
+CAUSED_BY = re.compile(r"^\s*Caused by: ")
+TRACE_CONT = re.compile(r"^\s+at |^\s+\.\.\. \d+ more|^\s*$")
+
+
+def cause_line_ids(lines: list, leaf: str, ev_key: str = "") -> list:
+    """Chỉ số các dòng nguyên nhân trong một đoạn log (danh sách dòng)."""
+    if leaf in CAUSE_TEST_LEAVES:
+        out, pending = [], None
+        for i, ln in enumerate(lines):
+            if CAUSED_BY.match(ln):
+                pending = i  # giữ Caused by cuối của chuỗi
+            elif TRACE_CONT.match(ln):
+                continue
+            else:
+                if pending is not None:
+                    out.append(pending)
+                    pending = None
+                if (EXC_LINE.search(ln) or SUREFIRE_ITEM.match(ln)) and not SUMMARY.search(ln):
+                    out.append(i)
+        if pending is not None:
+            out.append(pending)
+        return out
+    if ev_key and not SUMMARY.search(ev_key):
+        return [i for i, ln in enumerate(lines) if ev_key in ln]
+    return []

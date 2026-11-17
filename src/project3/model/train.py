@@ -15,6 +15,9 @@ cùng lá 1, anh em SIB_W), `proxy` (+ contrastive theo nguyên mẫu phân cấ
   --window-mode split  cửa sổ = nửa quanh dòng lỗi đầu + nửa quanh dòng lỗi cuối (mặc định `last`: quanh dòng lỗi cuối)
   --line-attn      gom token theo dòng, attention trên dòng -> điểm từng dòng (lưu 5 dòng cao nhất khi --save-repr)
   --ev-loss λ      + λ × (-log tổng trọng số các dòng chứa dòng bằng chứng của quy tắc), chỉ run không bị che
+  --cause-loss λ   (15/11/2026) thêm đầu dòng nguyên nhân (tách khỏi attention phân loại) + λ × (-log tổng xác suất các dòng
+                   nguyên nhân, model.inputs.cause_line_ids); lưu 5 dòng nguyên nhân cao nhất + tỉ lệ trúng top-1/top-5
+                   của đầu mới và của attention phân loại (cột cause_lines, hit_*) khi --save-repr
   --unknown DIR    gói run `?` (model.pack --unknown): dự đoán các run `?` của repo thuộc fold test (mô hình chưa thấy repo
                    đó), lưu {out}.unknown.parquet (+ attn, 5 dòng điểm cao nhất khi --save-repr)
   --save-model     lưu weight của epoch tốt nhất, chỉ phần không đóng băng (fp16): {out}.model_{variant}{seed}.pt; nạp lại
@@ -44,7 +47,7 @@ import pandas as pd
 
 from . import config as C
 from .data import fold_split, load_pack
-from .inputs import focus_window
+from .inputs import cause_line_ids, focus_window
 from .labels import LabelTree
 from .metrics import hier_scores
 from .text import ci_context, clip_chunk, mask_text
@@ -134,7 +137,8 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
 
     net = LogNet(tree, dev, freeze_layers=a.freeze_layers, tfidf_dim=fold.tfidf[False].shape[1] if fold.tfidf else 0,
                  share_parent=a.share_parent, proxy=variant == "proxy",
-                 feat_dim=fold.feats[False].shape[1] if fold.feats else 0, line_attn=a.line_attn).to(dev)
+                 feat_dim=fold.feats[False].shape[1] if fold.feats else 0, line_attn=a.line_attn,
+                 cause_head=bool(a.cause_loss), cause_detach=a.cause_detach).to(dev)
     enc_params = [p for p in net.enc.parameters() if p.requires_grad]
     head_params = [p for n, p in net.named_parameters() if not n.startswith("enc.")]
     opt = torch.optim.AdamW([{"params": enc_params, "lr": a.lr_enc}, {"params": head_params, "lr": 1e-3}],
@@ -162,11 +166,25 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
                 tgt.setdefault(k, []).append(g)
         return tgt
 
+    def cause_targets(rows, pos, texts, extra, f=fold):
+        """--cause-loss: run k -> chỉ số các dòng (trong extra) là dòng nguyên nhân (model.inputs.cause_line_ids)."""
+        at = {}
+        for g, (c, n) in enumerate(zip(extra["l2c"].tolist(), extra["lno"])):
+            at[(c, n)] = g
+        tgt = {}
+        for c, t in enumerate(texts):
+            k = pos[c][0]
+            for n in cause_line_ids(t.split("\n"), f.leaf[rows[k]], f.keys[rows[k]]):
+                if (c, n) in at:
+                    tgt.setdefault(k, []).append(at[(c, n)])
+        return tgt
+
     def predict(rows, masked, keep=False, f=fold):
         """-> (lá dự đoán, log xác suất 3 tầng, attention từng đoạn (JSON) hoặc None, z hoặc None,
         5 dòng điểm cao nhất mỗi run (JSON [(job, đoạn, dòng, trọng số, nội dung)]) khi keep + --line-attn, hoặc None)."""
         net.eval()
         preds, lps, attn, zs, top_lines = [], [], [], [], []
+        cause_top, hits = [], []
         with torch.no_grad(), autocast():
             for i in range(0, len(rows), a.eval_batch):
                 b = rows[i:i + a.eval_batch]
@@ -190,6 +208,20 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
                             top_lines.append(json.dumps([(pos[c][1], pos[c][2], n, round(float(lw[g]), 4),
                                                           texts[c].split("\n")[n][:200]) for g, c, n in top],
                                                         ensure_ascii=False))
+                        if a.cause_loss:
+                            cw = extra["cause_logw"].float().exp().cpu().numpy()
+                            tgt = cause_targets(b, pos, texts, extra, f=f)
+                            for k, gs in enumerate(per_run):
+                                ct = sorted(gs, key=lambda x: -cw[x[0]])[:5]
+                                cause_top.append(json.dumps([(pos[c][1], pos[c][2], n, round(float(cw[g]), 4),
+                                                              texts[c].split("\n")[n][:200]) for g, c, n in ct],
+                                                            ensure_ascii=False))
+                                at = [x[0] for x in sorted(gs, key=lambda x: -lw[x[0]])[:5]]
+                                T = set(tgt.get(k, []))
+                                hits.append(None if not T else {"cause1": ct[0][0] in T, "cause5": any(x[0] in T for x in ct),
+                                                                "attn1": at[0] in T, "attn5": any(x in T for x in at)})
+        if keep and a.cause_loss:
+            predict.cause = (cause_top, hits)
         return (preds, np.concatenate(lps), (attn if keep else None), (zs if keep else None),
                 (top_lines if keep and a.line_attn else None))
 
@@ -239,6 +271,12 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
                     lw = extra["line_logw"]
                     loss = loss + a.ev_loss * torch.stack([-torch.logsumexp(lw[torch.tensor(g, device=dev)], 0)
                                                             for g in tgt.values()]).mean()
+            if a.cause_loss:  # đầu dòng nguyên nhân: -log tổng xác suất các dòng nguyên nhân của run
+                ctg = cause_targets(b, pos, texts, extra)
+                if ctg:
+                    cl = extra["cause_logw"]
+                    loss = loss + a.cause_loss * torch.stack([-torch.logsumexp(cl[torch.tensor(g, device=dev)], 0)
+                                                              for g in ctg.values()]).mean()
             if variant != "ce":
                 loss = loss + C.LAMBDA * contrastive(feat, bt, step)
                 if a.views > 1:  # cặp dương = hai góc nhìn của cùng run (thông tin CE không có)
@@ -273,6 +311,16 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
             df["attn"], df["z"] = attn, z
             if lines is not None:
                 df["lines"] = lines
+            if a.cause_loss:
+                ct, hits = predict.cause
+                df["cause_lines"] = ct
+                df["hits"] = [json.dumps(h) for h in hits]
+                hv = [h for h in hits if h]
+                if hv:
+                    print(f"  {variant} test {name}: dòng nguyên nhân ({len(hv)} run có nhãn) — đầu mới top-1 "
+                          f"{np.mean([h['cause1'] for h in hv]):.3f} top-5 {np.mean([h['cause5'] for h in hv]):.3f}; "
+                          f"attention phân loại top-1 {np.mean([h['attn1'] for h in hv]):.3f} "
+                          f"top-5 {np.mean([h['attn5'] for h in hv]):.3f}", flush=True)
         out_preds.append(df)
         print(f"  {variant} test {name}: macro-F1 lá {res[name]['macroF1_l3']:.3f} tầng 2 {res[name]['macroF1_l2']:.3f} "
               f"tầng 1 {res[name]['macroF1_l1']:.3f}", flush=True)
@@ -344,6 +392,8 @@ def run_variant(fold: Fold, variant: str, seed: int, a, out_preds: list, unknown
 
 
 def main(a) -> None:
+    if a.cause_loss and not a.line_attn:
+        sys.exit("--cause-loss cần --line-attn")
     if a.ev_loss and not a.line_attn:
         sys.exit("--ev-loss cần --line-attn")
     runs, chunks, tree = load_pack(a.data, "chunks_tail.parquet" if a.chunks == "tail" else "chunks.parquet")
@@ -406,6 +456,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--window-mode", choices=["last", "split"], default="last",
                     help="cửa sổ quanh dòng lỗi cuối | nửa quanh dòng lỗi đầu + nửa quanh dòng lỗi cuối (30/10)")
     ap.add_argument("--line-attn", action="store_true", help="đoạn = attention trên các dòng (điểm từng dòng)")
+    ap.add_argument("--cause-loss", type=float, default=0.0,
+                    help="hệ số loss của đầu dòng nguyên nhân (0 = không có đầu này)")
+    ap.add_argument("--cause-detach", action="store_true",
+                    help="đầu dòng nguyên nhân không truyền gradient vào encoder (giữ nguyên phân loại)")
     ap.add_argument("--ev-loss", type=float, default=0.0,
                     help="trọng số loss chỉ dòng lỗi (cần --line-attn): dòng bằng chứng của quy tắc phải có trọng số cao")
     ap.add_argument("--flat", action="store_true", help="chỉ đầu lá (ablation bỏ phân cấp)")

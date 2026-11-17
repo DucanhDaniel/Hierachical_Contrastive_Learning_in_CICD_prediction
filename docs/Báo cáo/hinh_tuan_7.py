@@ -110,19 +110,24 @@ TREE = [  # (tầng 1, [(tầng 2, [(lá, số run)])]); số run theo nhãn 202
         ("Chạy lại", [("network", "2.598"), ("crash", "3.028")]),
     ]),
 ]
+# 04/11/2026: tầng 2 đổi thành "cách xử lý" (người dùng chốt); cách chia lá vào nhóm giữ nguyên
+TREE_V2 = [(t1, [(n, ls) for n, (_, ls) in zip(names, groups)]) for (t1, groups), names in zip(TREE, (
+    ["Sửa code theo thông báo lỗi", "Tái hiện lỗi ở local để sửa", "Sửa dựa trên kết quả CI"],
+    ["Sửa cấu hình CI", "Kiểm tra hạ tầng ngoài"]))]
 NOT_LEARNED = {"compatibility", "flaky"}
 
 
-def cay_nhan():
-    n = sum(len(ls) for _, g in TREE for _, ls in g)
+def cay_nhan(tree=TREE, sub2="Thời điểm cần sửa (sửa lúc nào?)", name="cay-nhan.png", counts=True, plain=False):
+    """plain: bỏ mọi chữ trong ngoặc và đánh dấu lá chưa học (ảnh cho người ngoài, 04/11/2026)."""
+    n = sum(len(ls) for _, g in tree for _, ls in g)
     step, top = 0.62, 0.55
     H = top + n * step + 0.35
     fig, ax = canvas(13, H)
     X0, X1, X2, X3 = 0.2, 2.0, 5.0, 9.0          # mép trái các cột
     W0, W1, W2, W3 = 1.2, 2.3, 3.2, 3.5
     bh = 0.44
-    for x, w, t, s in ((X0, W0, "Gốc", ""), (X1, W1, "Tầng 1", "Artifact chứa lỗi (sửa ở đâu?)"),
-                       (X2, W2, "Tầng 2", "Thời điểm cần sửa (sửa lúc nào?)"), (X3, W3, "Tầng 3 (lá)", "Loại lỗi · số run")):
+    for x, w, t, s in ((X0, W0, "Gốc", ""), (X1, W1, "Tầng 1", "Artifact chứa lỗi" if plain else "Artifact chứa lỗi (sửa ở đâu?)"),
+                       (X2, W2, "Tầng 2", sub2), (X3, W3, "Tầng 3" if plain else "Tầng 3 (lá)", "Loại lỗi · số run" if counts else "Loại lỗi")):
         ax.text(x + w / 2, H - 0.12, t, ha="center", va="top", fontsize=11, color="#404040")
         ax.text(x + w / 2, H - 0.45, s, ha="center", va="top", fontsize=8.5, color="#7F7F7F", style="italic")
 
@@ -140,13 +145,13 @@ def cay_nhan():
 
     y = H - top - 0.55
     l1_ys = []
-    for t1, groups in TREE:
+    for t1, groups in tree:
         l2_ys = []
         for t2, leaves in groups:
             ys = []
             for leaf, cnt in leaves:
-                dashed = leaf in NOT_LEARNED
-                node(X3, W3, y, f"{leaf}  ·  {cnt}" + ("  (chưa học)" if dashed else ""), "#FBE5D6",
+                dashed = leaf in NOT_LEARNED and not plain
+                node(X3, W3, y, (f"{leaf}  ·  {cnt}" if counts else leaf) + ("  (chưa học)" if dashed else ""), "#FBE5D6",
                      "#F4B183", "#A6A6A6" if dashed else "#843C0C", dashed)
                 ys.append(y); y -= step
             yc = (ys[0] + ys[-1]) / 2
@@ -160,7 +165,7 @@ def cay_nhan():
     yr = (l1_ys[0] + l1_ys[-1]) / 2
     node(X0, W0, yr, "failed", "#EDEDE9", "#A6A6A6", "#404040")
     elbow(X0 + W0, yr, X1, l1_ys)
-    fig.savefig(OUT / "cay-nhan.png", dpi=200, bbox_inches="tight", facecolor="white")
+    fig.savefig(OUT / name, dpi=200, bbox_inches="tight", facecolor="white")
 
 
 if __name__ == "__main__":
@@ -168,4 +173,5 @@ if __name__ == "__main__":
     v10(c=True)
     baselines()
     cay_nhan()
+    cay_nhan(TREE_V2, "Cách xử lý", "cay-nhan-v2.png", counts=False, plain=True)
     print("->", *sorted(p.name for p in OUT.glob("*.png")))

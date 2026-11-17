@@ -17,7 +17,9 @@ try {
         '{"title": "p3-gh-token", "id": "ducanhpham2k5/p3-gh-token", "licenses": [{"name": "other"}]}')
     $env:KAGGLE_API_TOKEN = Get-EnvValue 'KAGGLE_API_TOKEN'
     $env:PYTHONUTF8 = '1'; $env:PYTHONIOENCODING = 'utf-8'
-    uvx kaggle datasets create -p $dir   # mặc định private
+    # dataset đã có (16/11/2026: token cũ hết hạn) -> tạo phiên bản mới; chưa có -> tạo mới (mặc định private)
+    uvx --with six kaggle datasets version -p $dir -m 'token moi'
+    if ($LASTEXITCODE -ne 0) { uvx --with six kaggle datasets create -p $dir }
 } finally {
     Remove-Item -Recurse -Force $dir
 }

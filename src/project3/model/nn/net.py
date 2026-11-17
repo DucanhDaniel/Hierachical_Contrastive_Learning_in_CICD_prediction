@@ -10,13 +10,13 @@ import torch.nn.functional as F
 
 from ..config import ENCODER
 from ..labels import LabelTree
-from .pooling import seg_softmax_pool
+from .pooling import seg_log_softmax, seg_softmax_pool
 
 
 class LogNet(nn.Module):
     def __init__(self, tree: LabelTree, device, freeze_layers: int = 6, tfidf_dim: int = 0,
                  share_parent: bool = False, proxy: bool = False, encoder: str = ENCODER, feat_dim: int = 0,
-                 line_attn: bool = False):
+                 line_attn: bool = False, cause_head: bool = False, cause_detach: bool = False):
         from transformers import AutoModel, AutoTokenizer
         super().__init__()
         self.tok = AutoTokenizer.from_pretrained(encoder)
@@ -32,6 +32,14 @@ class LogNet(nn.Module):
         self.line_attn = line_attn
         if line_attn:  # đoạn = attention trên các dòng (token gom theo dòng) thay cho trung bình token
             self.att_l = nn.Linear(d, 1)
+        # đầu dòng nguyên nhân (15/11/2026): chấm điểm từng dòng, tách khỏi attention dùng cho phân loại (att_l), để
+        # chỉ ra dòng nguyên nhân (ngoại lệ, assert, Caused by) mà không kéo attention phân loại khỏi dòng tổng kết
+        self.cause_head = cause_head
+        if cause_head:
+            assert line_attn, "cause_head cần line_attn"
+            self.cause = nn.Sequential(nn.Linear(d, 128), nn.GELU(), nn.Linear(128, 1))
+        # cause_detach (15/11): gradient của đầu này không chảy vào encoder -> phân loại không bị kéo lệch
+        self.cause_detach = cause_detach
         self.ctx = nn.Sequential(nn.Linear(d, 64), nn.GELU())
         if tfidf_dim:
             self.tf = nn.Sequential(nn.Linear(tfidf_dim, 64), nn.GELU())
@@ -100,6 +108,8 @@ class LogNet(nn.Module):
             extra = extra or {}
             wcr = wc * wj[c2j]  # trọng số đoạn trong cả run
             extra.update(line_logw=torch.log(wl.clamp_min(1e-12)) + torch.log(wcr[l2c].clamp_min(1e-12)), l2c=l2c, lno=lno)
+            if self.cause_head:  # log xác suất "dòng này là nguyên nhân" trên mọi dòng của cùng run
+                extra["cause_logw"] = seg_log_softmax(self.cause(lv.detach() if self.cause_detach else lv).squeeze(1), j2r[c2j[l2c]], n_runs)
         feats = [r, self.ctx(self.embed(ctx, 64))]
         if tf is not None:
             feats.append(self.tf(torch.tensor(tf, device=self.dev)))

@@ -9,6 +9,8 @@ nên chạy được trên Kaggle. Cùng cách chia như model.train: test = fol
   tfidf_struct / tfidf_all   TF-IDF + đặc trưng giai đoạn/công cụ fail / + cả tóm tắt diff     (kiểm tra đầu vào, 27/10)
   bert      BERT fine-tune phân loại phẳng các lá, 512 token cuối của log                   (ICSE 2024 poster: "Applying
             Transformer Models for Automatic Build Errors Classification of Java-Based Open Source Projects")
+  bert_in   như bert nhưng đọc cùng loại đầu vào với mô hình chính (04/11/2026), gói trong một chuỗi 512 token:
+            [ngữ cảnh CI + đặc trưng giai đoạn/diff viết thành chữ] [SEP] [khối log lỗi điểm cao nhất, cửa sổ 1600 split]
 
     python -m project3.model.ladder --data DIR --out DIR --models majority ctx tfidf      # CPU
     python -m project3.model.ladder --data DIR --out DIR --models bert --folds 0 1        # GPU
@@ -23,14 +25,16 @@ import numpy as np
 import pandas as pd
 
 from .config import SEED
-from .data import mix50, train_folds, val_fold
+from .data import load_pack, mix50, train_folds, val_fold
+from .inputs import DIFF_KINDS, STAGE_SLOTS, chunk_score, focus_window
 from .labels import GROUP, PARENT
 from .metrics import hier_scores
-from .text import ci_context
+from .text import ci_context, mask_text
 from .tfidf import make_classifier, make_vectorizer
 
 BERT = "bert-base-uncased"
 BERT_CHARS = 6000  # đủ dư cho 512 token cuối; cắt trước khi tokenize cho nhanh
+WINDOW, WINDOW_MODE = 1600, "split"  # = cấu hình C của mô hình chính
 
 
 def load(data: Path) -> pd.DataFrame:
@@ -45,9 +49,42 @@ def load(data: Path) -> pd.DataFrame:
     return runs.reset_index(drop=True)
 
 
-def train_text(runs: pd.DataFrame) -> list:
+def feat_text(struct, diff) -> str:
+    """Đặc trưng có cấu trúc (model.inputs, đã log1p) -> một dòng chữ cho BERT (cách viết tự đặt, 04/11/2026)."""
+    n = len(STAGE_SLOTS)
+    tool, step = STAGE_SLOTS[int(np.argmax(struct[:n]))], STAGE_SLOTS[int(np.argmax(struct[n:2 * n]))]
+    mvn, gradle, _, jobs, gov, fails = struct[2 * n:]
+    tools = " ".join(t for t, v in (("maven", mvn), ("gradle", gradle)) if v) or "none"
+    s = (f"failed tool stage: {tool} | failed step stage: {step} | build tool: {tools} | failed jobs: "
+         f"{round(np.expm1(jobs))} | fail lines: {round(np.expm1(fails))}" + (" | governance step" if gov else ""))
+    k = len(DIFF_KINDS)
+    if not diff[k + 3]:
+        return s + " | no diff | " + ("pull request" if diff[k + 4] else "push")
+    kinds = ", ".join(f"{d} {round(100 * v)}%" for d, v in zip(DIFF_KINDS, diff[:k]) if v)
+    return (s + f" | diff: {round(np.expm1(diff[k]))} files +{round(np.expm1(diff[k + 1]))} "
+            f"-{round(np.expm1(diff[k + 2]))} ({kinds}) | " + ("pull request" if diff[k + 4] else "push"))
+
+
+def add_inputs(runs: pd.DataFrame, data: Path) -> pd.DataFrame:
+    """bert_in: thêm cột in_full / in_masked = (tiền tố, khối log). Chọn khối bằng chunk_score trên log đã che (như
+    model.pack chọn đoạn), rồi cắt cửa sổ như mô hình chính; bản che xoá dòng bằng chứng trước khi cắt."""
+    _, chunks, _ = load_pack(data)
+    out = {"in_full": [], "in_masked": []}
+    for r in runs.itertuples():
+        jobs = chunks.get(r.run_id, [[""]])
+        key = r.key if isinstance(r.key, str) else ""
+        cand = [(chunk_score(mask_text(t, key), ci == len(job) - 1), ji, ci, t)
+                for ji, job in enumerate(jobs) for ci, t in enumerate(job)]
+        best = max(cand, key=lambda x: x[:3])[3]  # hoà điểm: đoạn sau (như select_chunks)
+        for m, struct in (("full", r.struct_full), ("masked", r.struct_masked)):
+            log = focus_window(mask_text(best, key) if m == "masked" else best, WINDOW, WINDOW_MODE)
+            out[f"in_{m}"].append((r.ctx[:400] + " | " + feat_text(struct, r.diff), log))
+    return runs.assign(**out)
+
+
+def train_text(runs: pd.DataFrame, full: str = "full", masked: str = "masked") -> list:
     mix = mix50(runs.run_id)
-    return [m if mix[r] else f for r, f, m in zip(runs.run_id, runs.full, runs.masked)]
+    return [m if mix[r] else f for r, f, m in zip(runs.run_id, runs[full], runs[masked])]
 
 
 def sklearn_model(name: str, tr: pd.DataFrame, te: pd.DataFrame, va: pd.DataFrame = None) -> dict:
@@ -105,7 +142,9 @@ def feature_model(name: str, tr: pd.DataFrame, te: pd.DataFrame, va: pd.DataFram
     return {t: clf.predict(X(te, t, w)).tolist() for t in ("full", "masked")}
 
 
-def bert_model(tr: pd.DataFrame, va: pd.DataFrame, te: pd.DataFrame, epochs: int, batch: int, lr: float) -> dict:
+def bert_model(tr: pd.DataFrame, va: pd.DataFrame, te: pd.DataFrame, epochs: int, batch: int, lr: float,
+               pairs: bool = False) -> dict:
+    """pairs=False: 512 token cuối của log (bert). pairs=True: cặp (tiền tố, khối log) của add_inputs (bert_in)."""
     import torch
     from torch.utils.data import DataLoader
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
@@ -116,9 +155,13 @@ def bert_model(tr: pd.DataFrame, va: pd.DataFrame, te: pd.DataFrame, epochs: int
     classes = sorted(tr.leaf.unique())
     idx = {c: i for i, c in enumerate(classes)}
     tok = AutoTokenizer.from_pretrained(BERT)
-    tok.truncation_side = "left"  # giữ phần cuối log (nơi có lỗi)
+    tok.truncation_side = "right" if pairs else "left"  # bert: giữ phần cuối log (nơi có lỗi)
+    col = (lambda t: "in_" + t) if pairs else (lambda t: t)
 
     def enc(texts):
+        if pairs:  # cắt phần khối log khi quá dài, giữ nguyên tiền tố (tiền tố đã ≤ ~150 token)
+            return tok([a for a, _ in texts], [b for _, b in texts], truncation="only_second", max_length=512,
+                       padding="max_length", return_tensors="pt")
         return tok([t[-BERT_CHARS:] for t in texts], truncation=True, max_length=512, padding="max_length",
                    return_tensors="pt")
 
@@ -130,7 +173,7 @@ def bert_model(tr: pd.DataFrame, va: pd.DataFrame, te: pd.DataFrame, epochs: int
 
     model = AutoModelForSequenceClassification.from_pretrained(BERT, num_labels=len(classes),
                                                                ignore_mismatched_sizes=True).to(dev)
-    train_dl = loader(train_text(tr), [idx[x] for x in tr.leaf], shuffle=True)
+    train_dl = loader(train_text(tr, *map(col, ("full", "masked"))), [idx[x] for x in tr.leaf], shuffle=True)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     sched = get_linear_schedule_with_warmup(opt, int(0.06 * epochs * len(train_dl)), epochs * len(train_dl))
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
@@ -158,12 +201,12 @@ def bert_model(tr: pd.DataFrame, va: pd.DataFrame, te: pd.DataFrame, epochs: int
             scaler.step(opt)
             scaler.update()
             sched.step()
-        f1 = f1_score(va.leaf, predict(va.full.tolist()), average="macro", zero_division=0)
+        f1 = f1_score(va.leaf, predict(va[col("full")].tolist()), average="macro", zero_division=0)
         print(f"    epoch {ep + 1}: val macro-F1 lá {f1:.3f} ({time.time() - t0:.0f}s)", flush=True)
         if f1 > best:
             best, best_state = f1, {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
     model.load_state_dict(best_state)
-    return {t: predict(te[t].tolist()) for t in ("full", "masked")}
+    return {t: predict(te[col(t)].tolist()) for t in ("full", "masked")}
 
 
 def summarize(preds: pd.DataFrame, out: Path, name: str) -> None:
@@ -183,14 +226,17 @@ def summarize(preds: pd.DataFrame, out: Path, name: str) -> None:
 def main(data: Path, out: Path, models: list, folds: list, epochs: int, batch: int, lr: float) -> None:
     out.mkdir(parents=True, exist_ok=True)
     runs = load(data)
+    if "bert_in" in models:
+        runs = add_inputs(runs, data)
+        print("ví dụ đầu vào bert_in:", runs.in_full.iloc[0][0], "\n[SEP]", runs.in_full.iloc[0][1][:300], flush=True)
     print(f"{len(runs)} run, {runs.leaf.nunique()} lá", flush=True)
     for name in models:
         parts, t0 = [], time.time()
         for k in folds:
             tr = runs[runs.repo_fold.isin(train_folds(k))]
             te = runs[runs.repo_fold == k]
-            if name == "bert":
-                pred = bert_model(tr, runs[runs.repo_fold == val_fold(k)], te, epochs, batch, lr)
+            if name in ("bert", "bert_in"):
+                pred = bert_model(tr, runs[runs.repo_fold == val_fold(k)], te, epochs, batch, lr, name == "bert_in")
             else:
                 pred = sklearn_model(name, tr, te, runs[runs.repo_fold == val_fold(k)])
             for t, p in pred.items():
@@ -208,7 +254,7 @@ if __name__ == "__main__":
     ap.add_argument("--data", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--models", nargs="+", default=["majority", "ctx", "tfidf"],
-                    choices=["majority", "ctx", "tfidf", "feat", "tfidf_struct", "tfidf_all", "bert"])
+                    choices=["majority", "ctx", "tfidf", "feat", "tfidf_struct", "tfidf_all", "bert", "bert_in"])
     ap.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--batch", type=int, default=16)

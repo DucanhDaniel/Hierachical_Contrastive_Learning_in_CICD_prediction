@@ -1,6 +1,6 @@
 """Kernel Kaggle (GPU): chép lời ghi âm buổi hướng dẫn bằng faster-whisper large-v3, tiếng Việt, có mốc thời gian.
 
-Đầu vào: dataset private ducanhpham2k5/p3-audio-1023 (*.m4a). Đầu ra: /kaggle/working/<tên>.txt (mỗi dòng [mm:ss] câu)
+Đầu vào: dataset private (*.m4a) trong kernel-metadata.json (p3-audio-1023, p3-audio-1105). Đầu ra: /kaggle/working/<tên>.txt (mỗi dòng [mm:ss] câu)
 và <tên>.json (đoạn + từ).
 """
 import glob
@@ -21,7 +21,7 @@ for f in sorted(glob.glob("/kaggle/input/**/*.m4a", recursive=True)):
     audio = np.frombuffer(raw, np.float32)
     segs, info = model.transcribe(audio, language="vi", beam_size=5, vad_filter=True,
                                   initial_prompt="Buổi hướng dẫn đồ án: CI/CD, GitHub Actions, log, nhãn, Maven, Gradle, "
-                                                 "baseline, ablation, LLM, artifact, DevOps.")
+                                                 "baseline, ablation, LLM, artifact, DevOps, HCL, BERT, UniXcoder, diff, commit, demo, RCA.")
     rows = []
     name = Path(f).stem
     with open(f"/kaggle/working/{name}.txt", "w", encoding="utf-8") as out:

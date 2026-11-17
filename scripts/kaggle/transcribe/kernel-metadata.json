@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["ducanhpham2k5/p3-audio-1023"],
+  "dataset_sources": ["ducanhpham2k5/p3-audio-1105"],
   "competition_sources": [],
   "kernel_sources": []
 }
