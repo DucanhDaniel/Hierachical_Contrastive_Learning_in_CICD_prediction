@@ -7,7 +7,7 @@ Chế độ phân tích (workflow ci-triage.yml, khi workflow Build của một 
      thay đổi đề xuất dạng thay chuỗi (edits)
   4. người nên xử lý theo QUY TẮC (không để AI đoán tên người) -> assignee()
   5. bình luận vào PR (sửa bình luận cũ nếu có) + gợi ý sửa trên dòng code nằm trong PR (GitHub hiện nút
-     "Commit suggestion") + ô "Tạo pull request sửa lỗi" cho loại lỗi được phép (compile, quality, license, doc)
+     "Apply suggestion") + ô "Tạo pull request sửa lỗi" cho loại lỗi được phép (compile, quality, license, doc)
 Chế độ sửa (--fix, workflow ci-fix.yml, khi người có quyền ghi tick ô đó): áp ĐÚNG các thay đổi đã đề xuất (lưu trong
 bình luận) lên nhánh mới từ nhánh của PR, mở pull request vào nhánh đó. Agent không bao giờ ghi file.
 
@@ -172,14 +172,14 @@ def diff_right_lines(gh, repo: str, pr: int) -> dict:
 
 
 def review_suggestions(gh, repo: str, pr: int, sha: str, edits: list) -> int:
-    """Gợi ý sửa trên dòng code nằm trong PR -> GitHub hiện nút "Commit suggestion". Trả về số gợi ý đã đặt."""
+    """Gợi ý sửa trên dòng code nằm trong PR -> GitHub hiện nút "Apply suggestion". Trả về số gợi ý đã đặt."""
     rows = diff_right_lines(gh, repo, pr)
     cm = []
     for e in edits:
         r = rows.get(e["path"], set())
         if all(n in r for n in range(e["start"], e["end"] + 1)):
             c = {"path": e["path"], "line": e["end"], "side": "RIGHT",
-                 "body": f"**Gợi ý sửa lỗi CI** (bấm *Commit suggestion* để áp dụng)\n\n```suggestion\n{e['lines_new']}\n```"}
+                 "body": f"**Gợi ý sửa lỗi CI** (bấm *Apply suggestion* để áp dụng)\n\n```suggestion\n{e['lines_new']}\n```"}
             if e["end"] > e["start"]:
                 c.update(start_line=e["start"], start_side="RIGHT")
             cm.append(c)
@@ -196,26 +196,26 @@ def comment(o: dict, r: dict | None, who: tuple, team: dict, edits: list, n_sugg
     p, mc = o["pred"], o["mc"]
     a = (r or {}).get("answer") or {}
     blob = f"https://github.com/{o['repo']}/blob/{o['head_sha']}/"
-    name = (f"@{who[0]}" if team.get("mention") else f"`{who[0]}`") if who[0] else "—"
+    # 17/11: tag (@) để người đó nhận thông báo — chỉ khi là thành viên có quyền trong repo (team["_members"], main()
+    # kiểm tra qua API); người ngoài (vd tác giả gốc của repo được fork) chỉ ghi tên. Tắt hẳn bằng "mention": false.
+    tag = team.get("mention", True) and who[0] in team.get("_members", set())
+    name = (f"@{who[0]}" if tag else f"`{who[0]}`") if who[0] else "—"
     vi = LEAF.get(p["leaf"], (p["leaf"],))[0]
     conf = "đủ tin cậy" if mc["answered"] else "chưa đủ tin cậy — nên có người xem lại"
     tldr = esc(a.get("root_cause", "").split(". ")[0].rstrip(".") + ".") if a.get("root_cause") else vi
     can_pr = p["leaf"] in FIX_LEAVES and edits and a.get("needs_code_change")
-    ai = ("đề xuất sửa; tạo pull request sửa khi bạn bấm" if p["leaf"] in FIX_LEAVES
-          else "chỉ đề xuất, người xử lý tự sửa")
     out = [MARK, "## 🔎 Phân tích lỗi CI", f"> **Tóm tắt:** {tldr}",
            "| | |\n|---|---|\n"
            f"| **Loại lỗi** | {vi} (`{p['leaf']}`) · {NAMES.get(p['l1'], p['l1'])} → {NAMES.get(p['l2'], p['l2'])} |\n"
            f"| **Độ tin cậy** | xác suất {p['p_leaf'] or 0:.2f} · {conf} |\n"
-           f"| **Người nên xử lý** | {name} — {who[1]} |\n"
-           f"| **Job / bước lỗi** | {', '.join(o['failed_jobs'])} · {o['failed_steps'] or 'không rõ'} |\n"
-           f"| **AI được làm** | {ai} |"]
+           f"| **Người xử lý** | {name} — {who[1]} |\n"
+           f"| **Job / bước lỗi** | {', '.join(o['failed_jobs'])} · {o['failed_steps'] or 'không rõ'} |"]
     if a:
         out.append(f"### Nguyên nhân\n{esc(a.get('root_cause', ''))}")
         if a.get("suggested_fix"):
             out.append(f"### Cách sửa đề xuất\n{esc(a['suggested_fix'])}")
         if n_sugg:
-            out.append(f"💡 Đã đặt **{n_sugg} gợi ý sửa** trực tiếp trên dòng code của PR — bấm *Commit suggestion* "
+            out.append(f"💡 Đã đặt **{n_sugg} gợi ý sửa** trực tiếp trên dòng code của PR — bấm *Apply suggestion* "
                        "ở tab *Files changed* để áp dụng.")
         if a.get("suspects"):
             out.append(f"<details><summary>📄 File nghi ngờ ({len(a['suspects'][:5])})</summary>\n\n" + "\n".join(
@@ -350,6 +350,14 @@ def main() -> None:
             n_sugg = review_suggestions(gh, a.repo, a.pr, o["head_sha"], edits)
         except Exception as e:  # noqa: BLE001 — gợi ý trên dòng là phần phụ
             print("không đặt được gợi ý:", e, flush=True)
+    team["_members"] = set()
+    if who[0]:
+        try:  # người có quyền ghi trở lên trong repo mới được tag
+            perm = gh.get(f"/repos/{a.repo}/collaborators/{who[0]}/permission").get("permission")
+            if perm in ("admin", "maintain", "write", "triage"):
+                team["_members"].add(who[0])
+        except Exception:  # noqa: BLE001 — không kiểm tra được thì không tag
+            pass
     body = comment(o, r, who, team, edits, n_sugg, agent_in)
     if a.dry_run or not a.pr:
         print(body)

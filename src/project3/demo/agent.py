@@ -123,6 +123,7 @@ def pr_diff(gh, repo: str, sha: str, event: str) -> str:
 
 BACKEND = os.environ.get("P3_AGENT_BACKEND", "claude")  # claude | agy (Antigravity CLI, 17/11)
 AGY_MODEL = os.environ.get("P3_AGY_MODEL", "gemini-4-argon-high")
+AGY_TIMEOUT = os.environ.get("P3_AGY_TIMEOUT", "6m")
 
 
 def agy_bin() -> str:
@@ -153,10 +154,18 @@ def call(ws: Path, prompt: str, backend: str = None) -> dict:
                 "the only command allowed). Do not read whole large files such as the CI log: search first, then read "
                 "only the needed line ranges (read_file supports StartLine/EndLine). You cannot write or edit files. "
                 "Do not launch subagents or background tasks and do not write a plan file: investigate yourself and "
-                "return the final JSON answer in this turn.")
+                "return the final JSON answer in this turn. Budget: use at most 15 tool calls in total, then answer "
+                "with your best judgement.")
+        # 17/11: giới hạn 15 lần gọi công cụ (lời dặn) + 6 phút/lượt (cắt cứng) để giữ hạn mức Antigravity — tự đặt,
+        # người dùng duyệt (agy không có cờ giới hạn số bước như --max-turns của Claude Code)
         cmd = [agy_bin(), "-p", TASK + rule + "\n\n" + prompt, "--output-format", "json", "--json-schema", str(sf),
-               "--settings", str(perm), "--model", AGY_MODEL, "--print-timeout", "20m"]
-        p = sh(cmd, cwd=ws, timeout=1500)
+               "--settings", str(perm), "--model", AGY_MODEL, "--print-timeout", AGY_TIMEOUT]
+        try:
+            p = sh(cmd, cwd=ws, timeout=600)
+        except subprocess.TimeoutExpired:
+            sf.unlink(missing_ok=True)
+            perm.unlink(missing_ok=True)
+            return {"error": "timeout: agy chạy quá thời gian cho phép"}
         sf.unlink(missing_ok=True)
         perm.unlink(missing_ok=True)
         try:

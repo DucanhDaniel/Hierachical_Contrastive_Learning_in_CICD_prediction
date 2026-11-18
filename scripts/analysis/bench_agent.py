@@ -31,6 +31,7 @@ from project3.pipeline.run_dataset import clean  # noqa: E402
 BACKEND = os.environ.get("BENCH_BACKEND", "claude")  # claude | agy (17/11: agent thứ hai, chỉ cách A và E)
 AG, JD = (OUT / "agent", OUT / "judge") if BACKEND == "claude" else (OUT / "agent_agy", OUT / "judge_agy")
 CONDS = ("A", "E", "G") if BACKEND == "claude" else ("A", "E")
+AGY_TOKEN_BUDGET = int(os.environ.get("AGY_TOKEN_BUDGET", 8_000_000))  # ~50% hạn mức tuần ước tính (tự đặt)
 LOG_BYTES = 1_000_000
 LETTERS = "XYZ"[:len(CONDS)]
 JUDGE_LOG_CHARS, JUDGE_REF_CHARS = 30_000, 20_000  # như rca_agent (tự đặt)
@@ -106,6 +107,10 @@ def run() -> None:
                                                           encoding="utf-8")
                 print(c["case"], k, f"{rec['seconds']:.0f}s", r.get("in_tok"), "lỗi: " + r["error"][:120]
                       if r.get("error") else "", flush=True)
+                used = sum(json.loads(f.read_text(encoding="utf-8"))["out"]["usage"]["input_tokens"]
+                           for f in AG.glob("*.json"))
+                if used > AGY_TOKEN_BUDGET:  # 17/11: chặn trên tổng token đầu vào (tự đặt, đã báo người dùng)
+                    sys.exit(f"đã dùng {used:,} token đầu vào > ngân sách {AGY_TOKEN_BUDGET:,}, dừng")
                 if re.search(r"quota|rate.?limit|exhausted|limit reached|429", r.get("error") or "", re.I):
                     (AG / f"{c['case']}_{k}.json").unlink()  # hết hạn mức: bỏ kết quả lỗi, dừng (chạy tiếp sau)
                     rm(ws)

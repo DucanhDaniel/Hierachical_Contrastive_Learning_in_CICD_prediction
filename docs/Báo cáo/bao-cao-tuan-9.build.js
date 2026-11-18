@@ -91,6 +91,7 @@ const body = [
   B("**Truy vết đến mức code (mục 7):** em giao cho agent lập trình (Claude Code) tự đọc code của repo để tìm file gây lỗi, thử trên 60 lần chạy và 3 cách đưa đầu vào. Trên 41 lần chạy có bản sửa thật, agent đặt file đã sửa vào 3 file đầu ở mọi lần chạy (cách khớp tên file trong log được 70%). LLM chấm nguyên nhân đúng 95% khi agent nhận đoạn trích và loại lỗi, có quyền tự mở log đầy đủ, so với 82% khi chỉ có đoạn trích. Mỗi lượt dùng trung bình khoảng 117 nghìn token đầu vào (84% đọc lại từ bộ nhớ đệm), 1,9 nghìn token đầu ra, 9 bước, tương đương 0,21 USD theo bảng giá API."),
   B("**Dòng nguyên nhân (mục 7.7):** em thêm vào mô hình phân loại một đầu ra chấm điểm từng dòng log. Đầu ra này đưa dòng nguyên nhân lên đầu ở 85% lần chạy (90% với lỗi test, so với 4% của phần chú ý cũ), phân loại gần như giữ nguyên (Macro-F1 lá 0,755 so với 0,786, nằm gần mức dao động giữa các lần chạy). Khi agent chỉ nhận loại lỗi và 5 dòng này kèm vài dòng xung quanh (60 lần chạy), chọn file ngang log đầy đủ và token đầu vào giảm 16–21%, nhưng giải thích đúng hoàn toàn 46/60 so với 55/60, chưa đạt mức em đặt ra. Nguyên nhân chính là khối log mô hình đọc thường không chứa thông báo lỗi thật của lỗi test và lỗi thư viện."),
   B("**Kiểm tra trên benchmark ngoài (mục 7.8):** trên 45 lỗi Java của GHA-Bench và LogDx-CI, với đáp án là bản sửa thật, agent nhận loại lỗi và dòng nguyên nhân của mô hình giải thích đúng 39/45 so với 42/45 khi đọc log đầy đủ, chọn file kém 1 lỗi, nhưng token đầu vào giảm 39%. Dòng do mô hình chọn tốt hơn rõ so với cách lọc dòng có chữ error/fail (34/45)."),
+  B("**Bot trên pull request (mục 8):** mô hình và agent được đóng gói thành bot chạy trong GitHub Actions, tự bình luận nguyên nhân, cách sửa và người nên xử lý khi build của PR lỗi; với lỗi compile, quality, license, doc có thể mở PR sửa lỗi sau khi người có quyền duyệt. Tích hợp vào repo gồm 3 bước: thêm 2 secret, thêm 2 file workflow, cho phép Actions tạo PR."),
 
   H1("1. Ví dụ điển hình cho từng nhãn"),
   H2("1.1. Góp ý của cô"),
@@ -529,9 +530,42 @@ const body = [
   B("**Trên benchmark ngoài, cách 4 gần bằng log đầy đủ mà tốn ít token hơn nhiều:** nguyên nhân đúng 39/45 so với 42/45 (kém 3 lỗi; so từng lỗi: cách 1 đúng mà cách 4 không ở 4 lỗi, chiều ngược lại 1 lỗi), chọn file kém đúng 1 lỗi, trong khi token đầu vào trung bình giảm 39% (trung vị giảm 26%) và số bước giảm. Kết quả này tốt hơn trên 60 lần chạy của em (mục 7.7), có lẽ vì log của GHA-Bench ngắn hơn (trung vị 47 nghìn ký tự) nên phần log mô hình đọc ít khi thiếu thông báo lỗi."),
   B("**Dòng do mô hình chọn tốt hơn hẳn cách lọc chữ đơn giản khi đưa cho agent:** cùng khuôn đầu vào, cách 4 đúng 39 lỗi, cách đối chứng 34 lỗi với 7 lỗi bị chấm sai, và cách đối chứng còn tốn token hơn cả log đầy đủ vì agent phải tự đi tìm. Nghĩa là phép đo \"dòng đầu có trúng dòng người gán không\" chưa phản ánh đúng giá trị của dòng được chọn; phép đo bằng agent cho thấy rõ hơn."),
   B("**Các lỗi cách 4 kém hơn:** 2 lỗi định dạng code (Spotless) mà 5 dòng chỉ cho thấy một phần chỗ sai; 1 lỗi quality mà dòng báo lỗi thật (`./bin/rosetta-cli: No such file or directory`) không nằm trong các dòng được chọn; 1 lỗi test tích hợp agent đoán sai cơ chế."),
+  B("**Thử với agent thứ hai:** để xem kết quả có phụ thuộc vào Claude Code không, em chạy lại cách 1 và cách 4 bằng Antigravity CLI của Google (mô hình Gemini 4 Argon), cùng câu lệnh, cùng quyền chỉ đọc code (cho phép lệnh tìm chữ `findstr`, chặn ghi file). Do hạn mức sử dụng hằng tuần của tài khoản, em dừng sau **33/45 lỗi**; Bảng 23 so hai agent trên đúng 33 lỗi này, cùng người chấm."),
+  table(["33 lỗi Java", "Claude Code, cách 1", "Claude Code, cách 4", "Antigravity, cách 1", "Antigravity, cách 4"], [
+    ["Nguyên nhân đúng", "32", "29", "32", "29"],
+    ["File đúng ở vị trí 1", "0,88", "0,85", "0,88", "0,82"],
+    ["Token đầu vào, trung bình", "68 nghìn", "**49 nghìn**", "248 nghìn", "214 nghìn"],
+    ["Token đầu vào, trung vị", "59 nghìn", "**45 nghìn**", "145 nghìn", "119 nghìn"],
+    ["Thời gian mỗi lỗi, trung bình", "18 giây", "17 giây", "149 giây", "150 giây"],
+  ], [28, 18, 18, 18, 18], { size: 18 }),
+  CAP("Bảng 23. Hai agent lập trình trên 33 lỗi Java đầu tiên của GHA-Bench và LogDx-CI."),
+  B("**Hai agent cho cùng một kết luận:** độ đúng gần như trùng nhau, và với cả hai, cách 4 kém cách 1 đúng 3 lỗi nhưng giảm token đầu vào (15–28%). Như vậy kết quả của mục này không phải do riêng Claude Code. Antigravity tốn token gấp khoảng 4 lần và chậm hơn khoảng 8 lần vì nó không có công cụ tìm chữ trong code riêng, phải dùng lệnh hệ thống trả về kết quả dài và đọc cả những đoạn file lớn; em chọn Claude Code cho bot ở mục 8."),
 
-  // ======================= 8. VIỆC TIẾP THEO =======================
-  H1("8. Việc tiếp theo"),
+  // ======================= 8. BOT TRÊN PULL REQUEST =======================
+  H1("8. Bot phân tích lỗi CI trên pull request"),
+  P("Em đóng gói mô hình phân loại và agent ở mục 7 thành một bot chạy ngay trong GitHub Actions của repo, hoạt động giống các bot review code. Khi workflow build của một pull request (PR) bị lỗi, bot tự chạy:"),
+  N("Tải log của job bị lỗi.", 9),
+  N("Mô hình phân loại (chạy trên CPU của GitHub) cho ra loại lỗi theo cây nhãn và các dòng log nguyên nhân.", 9),
+  N("Agent lập trình (Claude Code) **chỉ đọc** code tại commit bị lỗi để nêu nguyên nhân, cách sửa và thay đổi đề xuất.", 9),
+  N("Chọn người nên xử lý theo quy tắc cố định, không để AI đoán: lỗi tầng Dự án giao cho tác giả PR hoặc chủ file (theo file CODEOWNERS), lỗi cấu hình CI giao cho người sửa file workflow gần nhất.", 9),
+  N("Bình luận vào PR, kèm gợi ý sửa trên đúng dòng code (GitHub hiện nút \"Commit suggestion\" để áp dụng bằng một lần bấm).", 9),
+  P("Với các loại lỗi sửa được an toàn bằng thay đổi nhỏ (compile, quality, license, doc), bình luận có thêm ô \"Tạo pull request sửa lỗi\". Khi người có quyền ghi vào repo tick ô này, bot áp đúng các thay đổi đã đề xuất lên một nhánh mới và mở PR vào nhánh của PR gốc. Bước này không chạy AI và bot không tự ghi file khi chưa có người duyệt."),
+  H2("8.1. Cách tích hợp bot vào một repo"),
+  P("Chủ repo chỉ cần làm 3 bước, không phải cài máy chủ riêng:"),
+  table(["Bước", "Việc cần làm", "Ghi chú"], [
+    ["1. Thêm 2 secret", "Vào Settings → Secrets and variables → Actions, thêm:\n`CLAUDE_CODE_OAUTH_TOKEN` (tạo bằng lệnh `claude setup-token`)\n`KAGGLE_API_TOKEN` (để tải mô hình)",
+      "Secret là giá trị bí mật GitHub cất giữ và chỉ đưa cho workflow khi chạy. Quyền đọc/ghi PR dùng `GITHUB_TOKEN` do GitHub tự cấp, không cần tạo."],
+    ["2. Thêm 2 file workflow", "Chép vào thư mục `.github/workflows/` trên nhánh mặc định:\n`ci-triage.yml`: phân tích và bình luận khi build của PR lỗi\n`ci-fix.yml`: mở PR sửa lỗi khi ô được tick",
+      "Sửa dòng `workflows: [Build]` trong `ci-triage.yml` cho trùng tên workflow build của repo. GitHub chỉ đọc 2 file này từ nhánh mặc định."],
+    ["3. Cho phép Actions tạo PR", "Vào Settings → Actions → General, bật \"Allow GitHub Actions to create and approve pull requests\"",
+      "Chỉ cần cho chức năng mở PR sửa lỗi. Không bật thì bot vẫn phân tích và bình luận bình thường."],
+  ], [18, 42, 40], { size: 18 }),
+  CAP("Bảng 24. Ba bước tích hợp bot vào một repo."),
+  B("**Không bắt buộc:** file `.github/ci-triage.json` để chọn ngôn ngữ bình luận (tiếng Việt hoặc tiếng Anh), bật hay tắt việc @nhắc tên người xử lý (mặc định tắt) và khai báo người phụ trách CI. File CODEOWNERS giúp bot chọn người xử lý chính xác hơn."),
+  B("**Giới hạn:** với PR mở từ bản fork của repo, GitHub không cho workflow biết số PR, nên bot vẫn phân tích nhưng chỉ in kết quả ra log của workflow, không bình luận được. Bot hiện chạy đầy đủ với PR mở từ nhánh trong cùng repo."),
+
+  // ======================= 9. VIỆC TIẾP THEO =======================
+  H1("9. Việc tiếp theo"),
   N("Xin cô góp ý 30 ví dụ ở mục 1, nhất là các ví dụ ranh giới và việc đổi tên tầng 2 thành \"Cách xử lý\".", 2),
   N("Toàn vẹn dữ liệu: lưu thêm phiên bản máy chạy và mã commit của action từ log, để trả lời được lỗi môi trường có do đổi phiên bản không.", 2),
   N("Nhãn phụ \"có giao cho AI tự sửa được không\" (cô gợi ý ngày 05/11): em sẽ đề xuất tiêu chí trình cô trước khi gán.", 2),
